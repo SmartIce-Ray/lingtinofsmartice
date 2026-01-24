@@ -1,8 +1,9 @@
 // Recording History Component - Display list of recordings with status
-// v1.0 - Shows today's recordings with processing status
+// v1.1 - Added left-swipe to delete (localStorage only, database unaffected)
 
 'use client';
 
+import { useState, useRef } from 'react';
 import { Recording, RecordingStatus } from '@/hooks/useRecordingStore';
 
 interface RecordingHistoryProps {
@@ -81,6 +82,86 @@ function MiniWaveform() {
   );
 }
 
+// Swipeable row with delete action
+interface SwipeableRowProps {
+  children: React.ReactNode;
+  onDelete: () => void;
+}
+
+function SwipeableRow({ children, onDelete }: SwipeableRowProps) {
+  const [translateX, setTranslateX] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const startXRef = useRef(0);
+  const currentXRef = useRef(0);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const DELETE_THRESHOLD = -80; // Pixels to swipe to trigger delete button
+  const DELETE_BUTTON_WIDTH = 80;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startXRef.current = e.touches[0].clientX;
+    currentXRef.current = translateX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const diff = e.touches[0].clientX - startXRef.current;
+    const newTranslateX = Math.min(0, Math.max(-DELETE_BUTTON_WIDTH, currentXRef.current + diff));
+    setTranslateX(newTranslateX);
+  };
+
+  const handleTouchEnd = () => {
+    // Snap to show delete button or hide it
+    if (translateX < DELETE_THRESHOLD / 2) {
+      setTranslateX(-DELETE_BUTTON_WIDTH);
+    } else {
+      setTranslateX(0);
+    }
+  };
+
+  const handleDelete = () => {
+    setIsDeleting(true);
+    // Animate out then delete
+    setTimeout(() => {
+      onDelete();
+    }, 200);
+  };
+
+  const resetSwipe = () => {
+    setTranslateX(0);
+  };
+
+  return (
+    <div
+      className={`relative overflow-hidden transition-all duration-200 ${isDeleting ? 'h-0 opacity-0' : ''}`}
+    >
+      {/* Delete button background */}
+      <div className="absolute inset-y-0 right-0 w-20 bg-red-500 flex items-center justify-center">
+        <button
+          onClick={handleDelete}
+          className="w-full h-full flex items-center justify-center text-white"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Swipeable content */}
+      <div
+        ref={rowRef}
+        className="relative bg-white transition-transform duration-150 ease-out"
+        style={{ transform: `translateX(${translateX}px)` }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onClick={translateX < 0 ? resetSwipe : undefined}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function RecordingHistory({
   recordings,
   onRetry,
@@ -104,10 +185,11 @@ export function RecordingHistory({
 
       <div className="divide-y divide-gray-50">
         {recordings.map((recording) => (
-          <div
+          <SwipeableRow
             key={recording.id}
-            className="px-4 py-3 hover:bg-gray-50 transition-colors"
+            onDelete={() => onDelete?.(recording.id)}
           >
+            <div className="px-4 py-3 hover:bg-gray-50 transition-colors">
             <div className="flex items-start justify-between gap-3">
               {/* Left: Table ID and time */}
               <div className="flex items-center gap-3">
@@ -161,7 +243,8 @@ export function RecordingHistory({
                 )}
               </div>
             )}
-          </div>
+            </div>
+          </SwipeableRow>
         ))}
       </div>
     </div>
