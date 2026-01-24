@@ -1,9 +1,9 @@
-// Record Button Component - Long press to record
-// v1.0
+// Record Button Component - Click to toggle recording
+// v1.1 - Simplified to use only onClick, removed duplicate touch/mouse handlers
 
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
 
 interface RecordButtonProps {
   isRecording: boolean;
@@ -18,39 +18,19 @@ export function RecordButton({
   onStart,
   onStop,
 }: RecordButtonProps) {
-  const [isPressed, setIsPressed] = useState(false);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const handlePressStart = useCallback(() => {
-    if (disabled) return;
-
-    setIsPressed(true);
-
-    // Start recording after a short delay to confirm long press
-    longPressTimerRef.current = setTimeout(() => {
-      if (!isRecording) {
-        onStart();
-      }
-    }, 150);
-  }, [disabled, isRecording, onStart]);
-
-  const handlePressEnd = useCallback(() => {
-    setIsPressed(false);
-
-    // Clear the timer if released before long press threshold
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-    }
-
-    // Stop recording if currently recording
-    if (isRecording) {
-      onStop();
-    }
-  }, [isRecording, onStop]);
+  // Debounce to prevent rapid double-clicks
+  const lastClickRef = useRef<number>(0);
 
   const handleClick = useCallback(() => {
-    // Toggle recording on click (alternative to long press)
     if (disabled) return;
+
+    // Debounce: ignore clicks within 300ms of last click
+    const now = Date.now();
+    if (now - lastClickRef.current < 300) {
+      console.log('[RecordButton] Ignoring rapid click');
+      return;
+    }
+    lastClickRef.current = now;
 
     if (isRecording) {
       onStop();
@@ -76,18 +56,11 @@ export function RecordButton({
         {/* Main button */}
         <button
           onClick={handleClick}
-          onMouseDown={handlePressStart}
-          onMouseUp={handlePressEnd}
-          onMouseLeave={handlePressEnd}
-          onTouchStart={handlePressStart}
-          onTouchEnd={handlePressEnd}
           disabled={disabled}
           className={`relative w-28 h-28 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 ${
             isRecording
               ? 'bg-primary-700 scale-110'
-              : isPressed
-                ? 'bg-primary-700 scale-95'
-                : 'bg-primary-600 hover:bg-primary-700'
+              : 'bg-primary-600 hover:bg-primary-700'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
         >
           {isRecording ? (

@@ -1,10 +1,17 @@
 // 讯飞 Speech-to-Text Service
-// v1.0 - WebSocket-based STT in request-response mode (non-streaming)
-// Sends complete audio file at once and waits for full transcript
+// v1.2 - Fixed WebSocket import for CommonJS compatibility
+// Added webm to PCM conversion using ffmpeg
 
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
-import WebSocket from 'ws';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+import * as WebSocket from 'ws';
+
+const execAsync = promisify(exec);
 
 // 讯飞 API Configuration
 const XUNFEI_WSS_URL = 'wss://iat-api.xfyun.cn/v2/iat';
@@ -31,7 +38,7 @@ export class XunfeiSttService {
 
   /**
    * Transcribe audio from URL using 讯飞 STT
-   * Downloads audio, sends via WebSocket, returns transcript
+   * Downloads audio, converts to PCM, sends via WebSocket, returns transcript
    */
   async transcribe(audioUrl: string): Promise<string> {
     const appId = process.env.XUNFEI_APP_ID;
@@ -47,15 +54,63 @@ export class XunfeiSttService {
     const audioBuffer = await this.downloadAudio(audioUrl);
     this.logger.log(`Downloaded ${audioBuffer.length} bytes`);
 
-    // Step 2: Build authenticated WebSocket URL
+    // Step 2: Detect format and convert to PCM if needed
+    const format = this.detectAudioFormat(audioUrl, audioBuffer);
+    this.logger.log(`Detected audio format: ${format}`);
+
+    let pcmBuffer: Buffer;
+    if (format === 'pcm') {
+      pcmBuffer = audioBuffer;
+    } else {
+      this.logger.log(`Converting ${format} to PCM...`);
+      pcmBuffer = await this.convertToPcm(audioBuffer, format);
+    }
+
+    // Step 3: Build authenticated WebSocket URL
     const wsUrl = this.buildAuthUrl(apiKey, apiSecret);
     this.logger.log(`Connecting to 讯飞 STT...`);
 
-    // Step 3: Send audio and get transcript
-    const transcript = await this.sendAudioAndGetTranscript(wsUrl, appId, audioBuffer);
+    // Step 4: Send audio and get transcript
+    const transcript = await this.sendAudioAndGetTranscript(wsUrl, appId, pcmBuffer);
     this.logger.log(`Transcript received: "${transcript}"`);
 
     return transcript;
+  }
+
+  /**
+   * Detect audio format from URL extension or buffer magic bytes
+   */
+  private detectAudioFormat(url: string, buffer: Buffer): string {
+    // Check URL extension first
+    const urlLower = url.toLowerCase();
+    if (urlLower.includes('.webm')) return 'webm';
+    if (urlLower.includes('.wav')) return 'wav';
+    if (urlLower.includes('.mp3')) return 'mp3';
+    if (urlLower.includes('.ogg')) return 'ogg';
+    if (urlLower.includes('.pcm')) return 'pcm';
+
+    // Check magic bytes
+    if (buffer.length >= 4) {
+      // WebM starts with 0x1A 0x45 0xDF 0xA3
+      if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
+        return 'webm';
+      }
+      // WAV starts with "RIFF"
+      if (buffer.toString('ascii', 0, 4) === 'RIFF') {
+        return 'wav';
+      }
+      // MP3 starts with 0xFF 0xFB or ID3
+      if ((buffer[0] === 0xff && buffer[1] === 0xfb) || buffer.toString('ascii', 0, 3) === 'ID3') {
+        return 'mp3';
+      }
+      // OGG starts with "OggS"
+      if (buffer.toString('ascii', 0, 4) === 'OggS') {
+        return 'ogg';
+      }
+    }
+
+    // Default to webm (most common from browser recording)
+    return 'webm';
   }
 
   /**
@@ -68,6 +123,41 @@ export class XunfeiSttService {
     }
     const arrayBuffer = await response.arrayBuffer();
     return Buffer.from(arrayBuffer);
+  }
+
+  /**
+   * Convert webm/other formats to PCM (16kHz, 16-bit, mono) using ffmpeg
+   */
+  private async convertToPcm(audioBuffer: Buffer, originalFormat: string): Promise<Buffer> {
+    const tempDir = os.tmpdir();
+    const inputFile = path.join(tempDir, `input_${Date.now()}.${originalFormat}`);
+    const outputFile = path.join(tempDir, `output_${Date.now()}.pcm`);
+
+    try {
+      // Write input file
+      fs.writeFileSync(inputFile, audioBuffer);
+
+      // Convert to PCM using ffmpeg
+      // -ar 16000: sample rate 16kHz
+      // -ac 1: mono channel
+      // -f s16le: signed 16-bit little-endian PCM
+      const ffmpegCmd = `ffmpeg -i "${inputFile}" -ar 16000 -ac 1 -f s16le "${outputFile}" -y 2>/dev/null`;
+      await execAsync(ffmpegCmd);
+
+      // Read output file
+      const pcmBuffer = fs.readFileSync(outputFile);
+      this.logger.log(`Converted audio to PCM: ${pcmBuffer.length} bytes`);
+
+      return pcmBuffer;
+    } finally {
+      // Cleanup temp files
+      try {
+        if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile);
+        if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 
   /**
@@ -127,10 +217,12 @@ export class XunfeiSttService {
       ws.on('message', (data: Buffer) => {
         try {
           const response: XunfeiResponse = JSON.parse(data.toString());
+          this.logger.log(`讯飞 response: code=${response.code}, message=${response.message}, status=${response.data?.status}`);
 
           if (response.code !== 0) {
             clearTimeout(timeout);
             ws.close();
+            this.logger.error(`讯飞 STT error code: ${response.code} - ${response.message}`);
             reject(new Error(`讯飞 STT error: ${response.code} - ${response.message}`));
             return;
           }
@@ -139,7 +231,10 @@ export class XunfeiSttService {
           if (response.data?.result?.ws) {
             for (const word of response.data.result.ws) {
               for (const cw of word.cw) {
-                transcriptParts.push(cw.w);
+                if (cw.w) {
+                  this.logger.log(`讯飞 word: "${cw.w}"`);
+                  transcriptParts.push(cw.w);
+                }
               }
             }
           }
@@ -148,7 +243,9 @@ export class XunfeiSttService {
           if (response.data?.status === 2) {
             clearTimeout(timeout);
             ws.close();
-            resolve(transcriptParts.join(''));
+            const finalTranscript = transcriptParts.join('');
+            this.logger.log(`Final transcript assembled: "${finalTranscript}"`);
+            resolve(finalTranscript);
           }
         } catch (error) {
           this.logger.error(`Failed to parse response: ${error.message}`);

@@ -1,5 +1,5 @@
 // Audio Recorder Hook - Handle browser audio recording
-// v1.0
+// v1.1 - Fixed duplicate start/stop calls and added guards
 
 'use client';
 
@@ -40,6 +40,9 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   const animationFrameRef = useRef<number | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
+  // Guard against duplicate calls using ref (survives across renders)
+  const isStartingRef = useRef<boolean>(false);
+  const isStoppingRef = useRef<boolean>(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -70,6 +73,13 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   }, [isRecording, isPaused]);
 
   const startRecording = useCallback(async () => {
+    // Guard against duplicate starts
+    if (isStartingRef.current || mediaRecorderRef.current?.state === 'recording') {
+      console.log('[useAudioRecorder] Ignoring duplicate start call');
+      return;
+    }
+    isStartingRef.current = true;
+
     try {
       setError(null);
       audioChunksRef.current = [];
@@ -107,6 +117,8 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
+        // Reset stopping guard after MediaRecorder fully stops
+        isStoppingRef.current = false;
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -126,33 +138,57 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
     } catch (err) {
       setError(err instanceof Error ? err.message : '无法访问麦克风');
       console.error('Recording error:', err);
+    } finally {
+      isStartingRef.current = false;
     }
   }, [updateAnalyserData]);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setIsPaused(false);
-
-      // Stop all tracks
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-
-      // Clear timer
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-
-      // Stop animation
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-
-      setAnalyserData(null);
+    // Guard against duplicate stops using ref (more reliable than state)
+    if (isStoppingRef.current) {
+      console.log('[useAudioRecorder] Ignoring duplicate stop call');
+      return;
     }
-  }, [isRecording]);
+
+    const mediaRecorder = mediaRecorderRef.current;
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      console.log('[useAudioRecorder] MediaRecorder not active, skipping stop');
+      return;
+    }
+
+    isStoppingRef.current = true;
+
+    // Stop MediaRecorder
+    mediaRecorder.stop();
+    setIsRecording(false);
+    setIsPaused(false);
+
+    // Stop all tracks to release microphone
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    // Clear timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Stop animation
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    // Close audio context
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    setAnalyserData(null);
+  }, []);
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording && !isPaused) {
