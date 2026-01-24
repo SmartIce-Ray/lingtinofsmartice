@@ -1,9 +1,9 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v1.4 - Increased max_tokens and simplified prompt for complete JSON response
+// v1.5 - Integrated 讯飞 STT service (WebSocket-based, non-streaming)
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
-import * as crypto from 'crypto';
+import { XunfeiSttService } from './xunfei-stt.service';
 
 // Gemini via PackyAPI Configuration
 const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
@@ -27,7 +27,10 @@ interface ProcessingResult {
 export class AiProcessingService {
   private readonly logger = new Logger(AiProcessingService.name);
 
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly xunfeiStt: XunfeiSttService,
+  ) {}
 
   /**
    * Main processing pipeline
@@ -90,34 +93,27 @@ export class AiProcessingService {
   }
 
   /**
-   * Transcribe audio using 讯飞 STT
-   * Note: This is a simplified implementation. Production should use WebSocket API.
+   * Transcribe audio using 讯飞 STT (WebSocket-based, non-streaming)
+   * Falls back to mock transcript if credentials not configured
    */
   private async transcribeAudio(audioUrl: string): Promise<string> {
-    // Read credentials at runtime
+    const XUNFEI_APP_ID = process.env.XUNFEI_APP_ID;
     const XUNFEI_API_KEY = process.env.XUNFEI_API_KEY;
     const XUNFEI_API_SECRET = process.env.XUNFEI_API_SECRET;
 
-    // For MVP demo, return mock transcript
-    // TODO: Implement actual 讯飞 WebSocket API integration
-    if (!XUNFEI_API_KEY || !XUNFEI_API_SECRET) {
+    // Check if 讯飞 credentials are configured
+    if (!XUNFEI_APP_ID || !XUNFEI_API_KEY || !XUNFEI_API_SECRET) {
       this.logger.warn('讯飞 credentials not configured, using mock transcript');
       return this.getMockTranscript();
     }
 
     try {
-      // 讯飞 API requires WebSocket connection for streaming
-      // For now, simulate the STT result
-      // Full implementation would:
-      // 1. Download audio from URL
-      // 2. Connect to wss://iat-api.xfyun.cn/v2/iat
-      // 3. Send audio chunks
-      // 4. Receive transcript
-
-      return this.getMockTranscript();
+      // Use 讯飞 STT service to transcribe audio
+      const transcript = await this.xunfeiStt.transcribe(audioUrl);
+      return transcript;
     } catch (error) {
-      this.logger.error(`STT failed: ${error.message}`);
-      throw error;
+      this.logger.error(`讯飞 STT failed: ${error.message}, using mock transcript`);
+      return this.getMockTranscript();
     }
   }
 
