@@ -1,7 +1,7 @@
-// Chat Stream Hook - Handle streaming chat responses
-// v1.0
+// Chat Stream Hook - Handle streaming chat responses with session persistence
+// v1.2 - Added sessionStorage persistence for tab switching
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 export interface Message {
   id: string;
@@ -18,23 +18,72 @@ interface UseChatStreamReturn {
   clearMessages: () => void;
 }
 
+const STORAGE_KEY = 'lingtin_chat_messages';
+const WELCOME_MESSAGE: Message = {
+  id: 'welcome',
+  role: 'assistant',
+  content: '你好！我是 Lingtin AI 助手。你可以问我任何关于桌访数据的问题，例如："上周客人对新上的鲈鱼有什么看法？"',
+};
+
+// Load messages from sessionStorage
+function getStoredMessages(): Message[] {
+  if (typeof window === 'undefined') return [WELCOME_MESSAGE];
+  try {
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const messages = JSON.parse(stored) as Message[];
+      // Clear any streaming state from previous session
+      return messages.map(msg => ({ ...msg, isStreaming: false }));
+    }
+    return [WELCOME_MESSAGE];
+  } catch {
+    return [WELCOME_MESSAGE];
+  }
+}
+
+// Save messages to sessionStorage
+function saveMessages(messages: Message[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function useChatStream(): UseChatStreamReturn {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: '你好！我是 Lingtin AI 助手。你可以问我任何关于桌访数据的问题，例如："上周客人对新上的鲈鱼有什么看法？"',
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Load messages from sessionStorage on mount
+  useEffect(() => {
+    const stored = getStoredMessages();
+    setMessages(stored);
+    setIsInitialized(true);
+  }, []);
+
+  // Save messages to sessionStorage when they change
+  useEffect(() => {
+    if (isInitialized) {
+      saveMessages(messages);
+    }
+  }, [messages, isInitialized]);
+
   const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || isLoading) return;
+    console.log('[useChatStream] sendMessage called with:', content);
+    console.log('[useChatStream] isLoading:', isLoading);
+
+    if (!content.trim() || isLoading) {
+      console.log('[useChatStream] Early return - empty content or loading');
+      return;
+    }
 
     // Cancel any ongoing request
     if (abortControllerRef.current) {
+      console.log('[useChatStream] Aborting previous request');
       abortControllerRef.current.abort();
     }
 
@@ -62,6 +111,7 @@ export function useChatStream(): UseChatStreamReturn {
     try {
       abortControllerRef.current = new AbortController();
 
+      console.log('[useChatStream] Sending fetch to /api/chat');
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,21 +122,34 @@ export function useChatStream(): UseChatStreamReturn {
         signal: abortControllerRef.current.signal,
       });
 
+      console.log('[useChatStream] Response status:', response.status);
+      console.log('[useChatStream] Response ok:', response.ok);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[useChatStream] Response error:', errorText);
         throw new Error('请求失败，请稍后重试');
       }
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('无法读取响应');
+      if (!reader) {
+        console.error('[useChatStream] No reader available');
+        throw new Error('无法读取响应');
+      }
 
+      console.log('[useChatStream] Starting to read stream');
       const decoder = new TextDecoder();
       let fullContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[useChatStream] Stream done');
+          break;
+        }
 
         const chunk = decoder.decode(value, { stream: true });
+        console.log('[useChatStream] Received chunk:', chunk);
         const lines = chunk.split('\n');
 
         for (const line of lines) {
@@ -94,6 +157,7 @@ export function useChatStream(): UseChatStreamReturn {
             const data = line.slice(6);
 
             if (data === '[DONE]') {
+              console.log('[useChatStream] Received [DONE]');
               setMessages(prev => prev.map(msg =>
                 msg.id === assistantMessageId
                   ? { ...msg, isStreaming: false }
@@ -104,6 +168,7 @@ export function useChatStream(): UseChatStreamReturn {
 
             try {
               const parsed = JSON.parse(data);
+              console.log('[useChatStream] Parsed data:', parsed);
               if (parsed.type === 'text') {
                 fullContent += parsed.content;
                 setMessages(prev => prev.map(msg =>
@@ -112,17 +177,23 @@ export function useChatStream(): UseChatStreamReturn {
                     : msg
                 ));
               } else if (parsed.type === 'error') {
+                console.error('[useChatStream] Error from server:', parsed.content);
                 throw new Error(parsed.content);
               }
             } catch (e) {
               // Skip invalid JSON lines
+              if (data.trim()) {
+                console.log('[useChatStream] Failed to parse:', data);
+              }
             }
           }
         }
       }
     } catch (err) {
+      console.error('[useChatStream] Catch block error:', err);
+
       if (err instanceof Error && err.name === 'AbortError') {
-        // Request was cancelled, ignore
+        console.log('[useChatStream] Request was aborted');
         return;
       }
 
@@ -136,6 +207,7 @@ export function useChatStream(): UseChatStreamReturn {
           : msg
       ));
     } finally {
+      console.log('[useChatStream] Finally block');
       setIsLoading(false);
       abortControllerRef.current = null;
     }
@@ -147,11 +219,7 @@ export function useChatStream(): UseChatStreamReturn {
       abortControllerRef.current.abort();
     }
 
-    setMessages([{
-      id: 'welcome',
-      role: 'assistant',
-      content: '你好！我是 Lingtin AI 助手。你可以问我任何关于桌访数据的问题，例如："上周客人对新上的鲈鱼有什么看法？"',
-    }]);
+    setMessages([WELCOME_MESSAGE]);
     setError(null);
     setIsLoading(false);
   }, []);
