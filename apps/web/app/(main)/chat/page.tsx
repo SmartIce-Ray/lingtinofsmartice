@@ -1,10 +1,11 @@
 // Chat Page - AI-powered analytics assistant with streaming support
-// v1.1 - Added streaming support, loading states, auto-scroll
+// v1.2 - Added markdown rendering for AI responses, fixed layout for bottom nav
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import { useChatStream } from '@/hooks/useChatStream';
+import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 
 export default function ChatPage() {
   const { messages, isLoading, sendMessage, clearMessages } = useChatStream();
@@ -39,9 +40,9 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">AI 智库</h1>
         <button
           onClick={clearMessages}
@@ -52,8 +53,8 @@ export default function ChatPage() {
         </button>
       </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages area with proper overflow handling */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -66,7 +67,12 @@ export default function ChatPage() {
                   : 'bg-white shadow-sm text-gray-900'
               }`}
             >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              {/* User messages: plain text, Assistant messages: markdown rendered */}
+              {msg.role === 'user' ? (
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+              ) : (
+                <MarkdownRenderer content={msg.content} />
+              )}
               {msg.isStreaming && (
                 <span className="inline-block w-2 h-4 bg-primary-500 ml-1 animate-pulse" />
               )}

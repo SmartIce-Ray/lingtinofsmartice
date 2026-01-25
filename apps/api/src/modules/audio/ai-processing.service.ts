@@ -1,5 +1,5 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v1.5 - Integrated 讯飞 STT service (WebSocket-based, non-streaming)
+// v2.0 - New structured label system: dishes (with keywords), service (keywords), other (keywords)
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -8,19 +8,23 @@ import { XunfeiSttService } from './xunfei-stt.service';
 // Gemini via PackyAPI Configuration
 const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
 
+// New structured label types
+export interface DishMention {
+  name: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  keywords: string[] | null;
+}
+
 interface ProcessingResult {
   transcript: string;
   correctedTranscript: string;
   aiSummary: string;
-  sentiment: 'positive' | 'neutral' | 'negative';
   sentimentScore: number;
-  visitType: 'routine' | 'complaint' | 'promotion';
-  serviceStage: 'ordering' | 'serving' | 'checkout';
-  dishMentions: Array<{
-    dishName: string;
-    sentiment: 'positive' | 'neutral' | 'negative';
-    feedbackText: string;
-  }>;
+  visitType: 'routine' | 'complaint' | 'praise';
+  // New structured labels
+  dishes: DishMention[];
+  service: string[] | null;
+  other: string[] | null;
 }
 
 @Injectable()
@@ -64,7 +68,7 @@ export class AiProcessingService {
     const aiResult = await this.processWithGemini(rawTranscript, dishNames);
     this.logger.log(`[Step 3/4] Gemini complete in ${Date.now() - aiStart}ms`);
     this.logger.log(`[Step 3/4] Summary: "${aiResult.aiSummary}"`);
-    this.logger.log(`[Step 3/4] Sentiment: ${aiResult.sentiment} (${aiResult.sentimentScore})`);
+    this.logger.log(`[Step 3/4] Score: ${aiResult.sentimentScore}, Dishes: ${aiResult.dishes.length}`);
 
     // Step 4: Save results to database
     this.logger.log(`[Step 4/4] Saving to database...`);
@@ -134,12 +138,29 @@ export class AiProcessingService {
 
     this.logger.log(`Using Gemini API key: ${GEMINI_API_KEY.substring(0, 10)}...`);
 
-    const systemPrompt = `分析餐饮桌访对话，输出JSON格式：
+    const systemPrompt = `分析餐饮桌访对话，提取结构化标签。
 
 菜单参考：${dishNames.slice(0, 30).join('、')}
 
-输出格式（只输出JSON，无其他内容）：
-{"correctedTranscript":"纠错后文本","aiSummary":"15字摘要","sentiment":"positive/neutral/negative","sentimentScore":0.5,"visitType":"routine/complaint/promotion","serviceStage":"ordering/serving/checkout","dishMentions":[{"dishName":"菜名","sentiment":"positive","feedbackText":"反馈"}]}`;
+输出JSON格式（只输出JSON，无其他内容）：
+{
+  "correctedTranscript": "纠偏后的完整文本",
+  "aiSummary": "20字以内摘要",
+  "sentimentScore": 0.5,
+  "visitType": "routine/complaint/praise",
+  "dishes": [
+    {"name": "菜名", "sentiment": "positive/negative/neutral", "keywords": ["关键词1", "关键词2"]}
+  ],
+  "service": ["服务相关关键词"],
+  "other": ["其他关键词"]
+}
+
+规则：
+1. dishes: 提到的每道菜，keywords提取口味/质量描述词（如：咸、量少、新鲜、好吃）
+2. service: 服务相关词（如：态度好、上菜慢、热情、主动加水）
+3. other: 品牌忠诚度相关词（如：老顾客、下次还来、推荐朋友）
+4. 如果某类没有提及，设为null
+5. visitType: routine=普通点餐, complaint=有投诉, praise=明确好评`;
 
     try {
       const response = await fetch(PACKY_API_URL, {
@@ -197,11 +218,11 @@ export class AiProcessingService {
       return {
         correctedTranscript: result.correctedTranscript || transcript,
         aiSummary: result.aiSummary || '无摘要',
-        sentiment: result.sentiment || 'neutral',
         sentimentScore: parseFloat(result.sentimentScore) || 0.5,
         visitType: result.visitType || 'routine',
-        serviceStage: result.serviceStage || 'serving',
-        dishMentions: result.dishMentions || [],
+        dishes: result.dishes || [],
+        service: result.service || null,
+        other: result.other || null,
       };
     } catch (error) {
       this.logger.error(`Gemini processing failed: ${error.message}`);
@@ -218,29 +239,27 @@ export class AiProcessingService {
       rawTranscript: string;
       correctedTranscript: string;
       aiSummary: string;
-      sentiment: string;
       sentimentScore: number;
       visitType: string;
-      serviceStage: string;
-      dishMentions: Array<{
-        dishName: string;
-        sentiment: string;
-        feedbackText: string;
-      }>;
+      dishes: DishMention[];
+      service: string[] | null;
+      other: string[] | null;
     },
   ): Promise<void> {
     // Check if running in mock mode
     if (this.supabase.isMockMode()) {
       this.logger.log(`[MOCK] Would save results for ${recordingId}:`);
       this.logger.log(`  - Summary: ${result.aiSummary}`);
-      this.logger.log(`  - Sentiment: ${result.sentiment} (${result.sentimentScore})`);
-      this.logger.log(`  - Dishes: ${result.dishMentions.map(d => d.dishName).join(', ')}`);
+      this.logger.log(`  - Score: ${result.sentimentScore}`);
+      this.logger.log(`  - Dishes: ${result.dishes.map(d => d.name).join(', ')}`);
+      this.logger.log(`  - Service: ${result.service?.join(', ') || 'null'}`);
+      this.logger.log(`  - Other: ${result.other?.join(', ') || 'null'}`);
       return;
     }
 
     const client = this.supabase.getClient();
 
-    // Update visit record
+    // Update visit record with new structured labels
     const { error: updateError } = await client
       .from('lingtin_visit_records')
       .update({
@@ -249,7 +268,9 @@ export class AiProcessingService {
         ai_summary: result.aiSummary,
         sentiment_score: result.sentimentScore,
         visit_type: result.visitType,
-        service_stage: result.serviceStage,
+        dishes: result.dishes,
+        service: result.service,
+        other: result.other,
         status: 'processed',
         processed_at: new Date().toISOString(),
       })
@@ -259,13 +280,13 @@ export class AiProcessingService {
       this.logger.error(`Failed to update visit record: ${updateError.message}`);
     }
 
-    // Insert dish mentions
-    if (result.dishMentions.length > 0) {
-      const dishMentionRecords = result.dishMentions.map((dm) => ({
+    // Also insert into dish_mentions table for backward compatibility
+    if (result.dishes.length > 0) {
+      const dishMentionRecords = result.dishes.map((d) => ({
         visit_id: recordingId,
-        dish_name: dm.dishName,
-        sentiment: dm.sentiment,
-        feedback_text: dm.feedbackText,
+        dish_name: d.name,
+        sentiment: d.sentiment,
+        feedback_text: d.keywords?.join('、') || '',
       }));
 
       const { error: insertError } = await client
@@ -297,15 +318,15 @@ export class AiProcessingService {
   private getMockAiResult(): Omit<ProcessingResult, 'transcript'> {
     return {
       correctedTranscript: '今天的清蒸鲈鱼很新鲜，油焖大虾也不错，就是等的时间有点长',
-      aiSummary: '顾客对菜品满意，等待时间稍长',
-      sentiment: 'positive',
+      aiSummary: '清蒸鲈鱼新鲜，油焖大虾好，上菜稍慢',
       sentimentScore: 0.72,
       visitType: 'routine',
-      serviceStage: 'serving',
-      dishMentions: [
-        { dishName: '清蒸鲈鱼', sentiment: 'positive', feedbackText: '很新鲜' },
-        { dishName: '油焖大虾', sentiment: 'positive', feedbackText: '不错' },
+      dishes: [
+        { name: '清蒸鲈鱼', sentiment: 'positive', keywords: ['新鲜'] },
+        { name: '油焖大虾', sentiment: 'positive', keywords: ['不错'] },
       ],
+      service: ['等待时间长'],
+      other: null,
     };
   }
 }

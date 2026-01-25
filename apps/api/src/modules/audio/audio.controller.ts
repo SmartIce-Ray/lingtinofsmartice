@@ -1,5 +1,5 @@
 // Audio Controller - API endpoints for recording
-// v2.1 - Added request logging for debugging
+// v2.2 - Updated to use new structured label system (dishes, service, other)
 
 import {
   Controller,
@@ -69,15 +69,18 @@ export class AudioController {
       restaurantId,
     );
 
-    this.logger.log(`◀ Process complete: ${result.sentiment} (${result.sentimentScore})`);
+    this.logger.log(`◀ Process complete: score=${result.sentimentScore}, dishes=${result.dishes.length}`);
 
     return {
       success: true,
       transcript: result.transcript,
       correctedTranscript: result.correctedTranscript,
       aiSummary: result.aiSummary,
-      sentiment: result.sentiment,
       sentimentScore: result.sentimentScore,
+      visitType: result.visitType,
+      dishes: result.dishes,
+      service: result.service,
+      other: result.other,
     };
   }
 

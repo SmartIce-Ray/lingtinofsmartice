@@ -1,4 +1,4 @@
-/* Global Styles - v1.1 - Added safe-area, scrollbar-hide utilities */
+/* Global Styles - v1.2 - Added markdown prose styles for chat messages */
 
 @tailwind base;
 @tailwind components;
@@ -63,4 +63,120 @@ body {
 
 .animate-pulse-ring {
   animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+/* Markdown/Prose styles for chat AI responses */
+.prose-chat {
+  line-height: 1.6;
+}
+
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.prose-chat h1 {
+  font-size: 1.25rem;
+}
+
+.prose-chat h2 {
+  font-size: 1.125rem;
+}
+
+.prose-chat h3,
+.prose-chat h4 {
+  font-size: 1rem;
+}
+
+.prose-chat p {
+  margin-bottom: 0.75em;
+}
+
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.prose-chat li {
+  margin: 0.25em 0;
+}
+
+.prose-chat ul {
+  list-style-type: disc;
+}
+
+.prose-chat ol {
+  list-style-type: decimal;
+}
+
+.prose-chat strong,
+.prose-chat b {
+  font-weight: 600;
+}
+
+.prose-chat em,
+.prose-chat i {
+  font-style: italic;
+}
+
+.prose-chat code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.125em 0.25em;
+  border-radius: 0.25em;
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.prose-chat pre {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.75em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.prose-chat pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.prose-chat blockquote {
+  border-left: 3px solid rgba(0, 0, 0, 0.2);
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 1em 0;
+}
+
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 0.5em;
+  text-align: left;
+}
+
+.prose-chat th {
+  background-color: rgba(0, 0, 0, 0.05);
+  font-weight: 600;
 }
