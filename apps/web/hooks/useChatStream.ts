@@ -117,7 +117,7 @@ export function useChatStream(): UseChatStreamReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: content,
-          restaurant_id: 'demo-restaurant-id',
+          restaurant_id: '684f98e6-293a-4362-a0e1-e388483bf89c', // Demo restaurant with test data
         }),
         signal: abortControllerRef.current.signal,
       });

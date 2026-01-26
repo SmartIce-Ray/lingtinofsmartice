@@ -106,6 +106,9 @@ export class ChatService {
     sessionId: string | undefined,
     res: Response,
   ) {
+    console.log('\n========== CHAT SERVICE DEBUG ==========');
+    console.log('[CHAT] Message:', message);
+    console.log('[CHAT] Restaurant ID:', restaurantId);
     this.logger.log(`streamResponse called`);
     this.logger.log(`message: ${message}`);
     this.logger.log(`restaurantId: ${restaurantId}`);
@@ -247,6 +250,9 @@ export class ChatService {
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     const { name, arguments: argsJson } = toolCall.function;
 
+    console.log('\n---------- TOOL CALL ----------');
+    console.log('[TOOL] Name:', name);
+    console.log('[TOOL] Arguments:', argsJson);
     this.logger.log(`Executing tool: ${name}`);
     this.logger.log(`Arguments: ${argsJson}`);
 
@@ -255,10 +261,14 @@ export class ChatService {
 
       if (name === 'query_database') {
         const { sql, purpose } = args;
+        console.log('[TOOL] Purpose:', purpose);
+        console.log('[TOOL] SQL:', sql);
         this.logger.log(`[query_database] Purpose: ${purpose}`);
         this.logger.log(`[query_database] SQL: ${sql}`);
 
         const result = await this.executeQuery(sql, restaurantId);
+        console.log('[TOOL] Result rows:', result?.length || 0);
+        console.log('[TOOL] Result data:', JSON.stringify(result, null, 2));
         this.logger.log(`[query_database] Result rows: ${result?.length || 0}`);
 
         return { success: true, data: result };
@@ -266,6 +276,7 @@ export class ChatService {
 
       return { success: false, error: `Unknown tool: ${name}` };
     } catch (error) {
+      console.log('[TOOL] ERROR:', error.message);
       this.logger.error(`Tool execution error: ${error.message}`);
       return { success: false, error: error.message };
     }
@@ -307,16 +318,20 @@ export class ChatService {
       }
     }
 
+    console.log('[QUERY] Modified SQL:', modifiedSql);
     this.logger.log(`[executeQuery] Modified SQL: ${modifiedSql}`);
 
     // Execute the query using Supabase's raw SQL capability
     // Note: In production, use a more secure approach like parameterized queries
+    console.log('[QUERY] Calling RPC execute_readonly_query...');
     const { data, error } = await client.rpc('execute_readonly_query', {
       query_text: modifiedSql,
     });
 
     if (error) {
       // If RPC doesn't exist, try direct query on the table
+      console.log('[QUERY] RPC FAILED:', error.message);
+      console.log('[QUERY] Falling back to direct query...');
       this.logger.warn(`RPC failed: ${error.message}, trying direct query`);
 
       // Parse the SQL to extract table and conditions for Supabase query builder
@@ -325,6 +340,7 @@ export class ChatService {
       return result;
     }
 
+    console.log('[QUERY] RPC SUCCESS! Data:', JSON.stringify(data, null, 2));
     return data || [];
   }
 
