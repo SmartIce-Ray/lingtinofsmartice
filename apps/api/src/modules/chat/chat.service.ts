@@ -1,5 +1,5 @@
 // Chat Service - AI assistant with tool use for database queries
-// v2.5 - Added conversation history support for multi-turn context
+// v2.7 - Fixed: AI understands user intent first, only queries DB for business data questions
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -10,7 +10,13 @@ import { SupabaseService } from '../../common/supabase/supabase.service';
 const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
 
 // System prompt for the AI assistant
-const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手。你可以帮助餐厅老板分析桌访录音数据。
+const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手。
+
+## 核心原则：先理解用户意图
+收到问题后，**先判断用户真正想问什么**：
+- 如果是闲聊、打招呼、问你是谁 → 直接回答，不查数据库
+- 如果是问对话内容（如"我刚刚说了啥"）→ 直接说"抱歉，我无法回顾我们的对话历史。我是桌访数据分析助手，可以帮你查询菜品反馈、顾客评价等业务数据。"
+- **只有当用户明确问桌访数据、菜品反馈、顾客评价、服务质量等业务问题时**，才使用 query_database 工具
 
 ## 你的能力
 你可以使用 query_database 工具查询以下数据表：
