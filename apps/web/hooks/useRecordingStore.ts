@@ -1,9 +1,11 @@
 // Recording Store - Database as single source of truth
-// v2.2 - Fixed: Generate UUID format IDs to prevent duplicate records in database
+// v2.4 - Added: Supabase Realtime subscription for live UI updates when records change
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthHeaders } from '@/contexts/AuthContext';
 import { cancelProcessing } from '@/lib/backgroundProcessor';
+import { createClient } from '@/lib/supabase/client';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export type RecordingStatus =
   | 'saved'        // Saved to localStorage (not yet uploaded)
@@ -105,6 +107,7 @@ function dbRecordToRecording(dbRecord: {
   status: string;
   ai_summary?: string;
   sentiment_score?: number;
+  audio_url?: string;
   created_at: string;
 }): Recording {
   return {
@@ -115,12 +118,16 @@ function dbRecordToRecording(dbRecord: {
     status: dbRecord.status === 'processed' ? 'completed' : dbRecord.status as RecordingStatus,
     aiSummary: dbRecord.ai_summary,
     sentimentScore: dbRecord.sentiment_score,
+    audioUrl: dbRecord.audio_url,
   };
 }
 
 export function useRecordingStore(restaurantId?: string) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Supabase client ref for Realtime subscription
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   // Fetch today's recordings from database on mount
   useEffect(() => {
@@ -158,6 +165,104 @@ export function useRecordingStore(restaurantId?: string) {
     };
 
     fetchFromDatabase();
+  }, [restaurantId]);
+
+  // Subscribe to Supabase Realtime for live updates when records change
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    // Check if Supabase environment variables are configured
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseKey || !supabaseUrl.startsWith('http')) {
+      console.warn('[Realtime] Supabase not configured, skipping realtime subscription');
+      return;
+    }
+
+    const supabase = createClient();
+
+    // Subscribe to UPDATE events on lingtin_visit_records table
+    const channel = supabase
+      .channel('visit-records-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'lingtin_visit_records',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Record updated:', payload.new);
+          const updatedRecord = payload.new as {
+            id: string;
+            table_id: string;
+            status: string;
+            ai_summary?: string;
+            sentiment_score?: number;
+            audio_url?: string;
+            created_at: string;
+          };
+
+          // Update the recording in state
+          setRecordings(prev =>
+            prev.map(rec =>
+              rec.id === updatedRecord.id
+                ? dbRecordToRecording(updatedRecord)
+                : rec
+            )
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'lingtin_visit_records',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] New record inserted:', payload.new);
+          const newRecord = payload.new as {
+            id: string;
+            table_id: string;
+            status: string;
+            ai_summary?: string;
+            sentiment_score?: number;
+            audio_url?: string;
+            created_at: string;
+          };
+
+          // Add new record if not already in state (avoid duplicates)
+          setRecordings(prev => {
+            const exists = prev.some(rec => rec.id === newRecord.id);
+            if (exists) {
+              // Update existing record instead
+              return prev.map(rec =>
+                rec.id === newRecord.id
+                  ? dbRecordToRecording(newRecord)
+                  : rec
+              );
+            }
+            // Add new record at the beginning
+            return [dbRecordToRecording(newRecord), ...prev];
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Subscription status:', status);
+      });
+
+    channelRef.current = channel;
+
+    // Cleanup on unmount
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
   }, [restaurantId]);
 
   // Save a new recording (local first, before upload)
