@@ -1,4 +1,7 @@
 // Dashboard Page - Business metrics and analytics
+// v2.5 - Fixed: Popover uses shift strategy - centers below bubble, shifts to stay in viewport
+// v2.4 - Fixed: Popover uses right positioning when clicked on right side of screen
+// v2.3 - Added: AI optimize button for 话术使用 section with shimmer effect
 // v2.2 - Fixed: Popover positioning now has consistent 16px margins on both sides
 // v2.1 - Added: SWR for stale-while-revalidate caching
 //        Clickable feedback bubbles with conversation popover
@@ -7,6 +10,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
@@ -77,6 +81,7 @@ interface HighlightsResponse {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [selectedDate, setSelectedDate] = useState('今日');
   // State for feedback popover
   const [selectedFeedback, setSelectedFeedback] = useState<{
@@ -313,7 +318,29 @@ export default function DashboardPage() {
 
         {/* Manager Questions - 话术使用 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">话术使用</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-gray-700">话术使用</h2>
+            {/* AI Optimize Button - Shimmer effect with sparkle icon */}
+            <button
+              onClick={() => {
+                const question = '请你获取我们最近的桌台访问的话术并且以专业餐饮经营者的角度，告诉我该如何优化这些话术，以获得更好的效果';
+                router.push(`/chat?q=${encodeURIComponent(question)}`);
+              }}
+              className="group relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95"
+            >
+              {/* Animated gradient background */}
+              <span className="absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,#8b5cf6,45%,#c084fc,55%,#8b5cf6)] bg-[length:200%_100%]" />
+              {/* Inner content with backdrop */}
+              <span className="relative flex items-center gap-1.5 text-white">
+                {/* Sparkle/Magic wand icon */}
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" strokeLinecap="round" />
+                  <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+                </svg>
+                <span>AI 优化</span>
+              </span>
+            </button>
+          </div>
           <div className="space-y-2">
             {managerQuestions.length === 0 && !loading && (
               <div className="text-center py-4 text-gray-400 text-sm">暂无数据</div>
@@ -334,16 +361,34 @@ export default function DashboardPage() {
       </main>
 
       {/* Feedback Conversation Popover */}
-      {selectedFeedback && (
-        <div
-          ref={popoverRef}
-          className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 max-w-sm animate-in fade-in zoom-in-95 duration-200"
-          style={{
-            top: Math.min(selectedFeedback.rect.bottom + 8, window.innerHeight - 300),
-            // Ensure 16px margin on both left and right (max-w-sm = 384px)
-            left: Math.max(16, Math.min(selectedFeedback.rect.left, window.innerWidth - 384 - 16)),
-          }}
-        >
+      {selectedFeedback && (() => {
+        // Shift strategy: keep popover within viewport with 16px padding
+        const popoverWidth = 320; // w-80 = 320px
+        const padding = 16;
+        const viewportWidth = window.innerWidth;
+
+        // Try to center below the bubble, then shift to stay in bounds
+        const bubbleCenter = selectedFeedback.rect.left + selectedFeedback.rect.width / 2;
+        let left = bubbleCenter - popoverWidth / 2;
+
+        // Shift right if overflowing left edge
+        if (left < padding) {
+          left = padding;
+        }
+        // Shift left if overflowing right edge
+        if (left + popoverWidth > viewportWidth - padding) {
+          left = viewportWidth - popoverWidth - padding;
+        }
+
+        return (
+          <div
+            ref={popoverRef}
+            className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 w-80 animate-in fade-in zoom-in-95 duration-200"
+            style={{
+              top: Math.min(selectedFeedback.rect.bottom + 8, window.innerHeight - 300),
+              left,
+            }}
+          >
           {/* Close button */}
           <button
             onClick={() => setSelectedFeedback(null)}
@@ -423,7 +468,8 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
