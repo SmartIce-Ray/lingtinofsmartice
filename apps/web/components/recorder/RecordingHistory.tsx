@@ -1,5 +1,5 @@
 // Recording History Component - Display list of recordings with status
-// v1.2 - Database sync: delete now removes from database, added pending/processed status
+// v1.3 - Added title prop for date selector support
 
 'use client';
 
@@ -10,6 +10,7 @@ interface RecordingHistoryProps {
   recordings: Recording[];
   onRetry?: (id: string) => void;
   onDelete?: (id: string) => void;
+  title?: string;
 }
 
 // Format timestamp to HH:MM
@@ -169,11 +170,12 @@ export function RecordingHistory({
   recordings,
   onRetry,
   onDelete,
+  title = '今日录音',
 }: RecordingHistoryProps) {
   if (recordings.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-        <p className="text-gray-400 text-sm">今日暂无录音</p>
+        <p className="text-gray-400 text-sm">暂无录音</p>
       </div>
     );
   }
@@ -182,7 +184,7 @@ export function RecordingHistory({
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100">
         <h3 className="text-sm font-medium text-gray-700">
-          今日录音 ({recordings.length})
+          {title} ({recordings.length})
         </h3>
       </div>
 

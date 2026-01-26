@@ -1,9 +1,9 @@
 // Recorder Page - Store manager records table visits with database sync
-// v2.5 - Database as single source of truth, frontend syncs on load
+// v2.6 - Added today/yesterday date selector for recording history
 
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useRecordingStore } from '@/hooks/useRecordingStore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,10 +21,23 @@ function formatDuration(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+// Get start of day timestamp for a date selection
+function getDateRange(selection: string): { start: number; end: number } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (selection === '昨日') {
+    start.setDate(start.getDate() - 1);
+  }
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start: start.getTime(), end: end.getTime() };
+}
+
 export default function RecorderPage() {
   const [tableId, setTableId] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [pendingSave, setPendingSave] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('今日');
 
   const { user } = useAuth();
   const restaurantId = user?.restaurantId;
@@ -38,12 +51,15 @@ export default function RecorderPage() {
     recordings,
     saveRecording,
     updateRecording,
-    getTodayRecordings,
     deleteRecording,
     getRecordingsNeedingRetry,
   } = useRecordingStore(restaurantId);
 
-  const todayRecordings = getTodayRecordings();
+  // Filter recordings by selected date
+  const filteredRecordings = useMemo(() => {
+    const { start, end } = getDateRange(selectedDate);
+    return recordings.filter(rec => rec.timestamp >= start && rec.timestamp < end);
+  }, [recordings, selectedDate]);
 
   // Show toast message - defined early so it can be used in useEffects
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -168,7 +184,25 @@ export default function RecorderPage() {
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">桌访录音</h1>
-        <UserMenu />
+        <div className="flex items-center gap-3">
+          {/* Date Tabs */}
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            {['今日', '昨日'].map((option) => (
+              <button
+                key={option}
+                onClick={() => setSelectedDate(option)}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  selectedDate === option
+                    ? 'bg-white text-gray-900 shadow-sm font-medium'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <UserMenu />
+        </div>
       </header>
 
       <main className="p-4 space-y-4">
@@ -224,9 +258,10 @@ export default function RecorderPage() {
 
         {/* Recording History */}
         <RecordingHistory
-          recordings={todayRecordings}
+          recordings={filteredRecordings}
           onRetry={handleRetry}
           onDelete={deleteRecording}
+          title={selectedDate === '今日' ? '今日录音' : '昨日录音'}
         />
       </main>
     </div>

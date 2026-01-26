@@ -1,14 +1,11 @@
 // Dashboard Page - Business metrics and analytics
-// v1.4 - Added UserMenu component for user info and logout
+// v1.9 - Fixed date timezone issue, changed dropdown to horizontal tabs
 
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getAuthHeaders } from '@/contexts/AuthContext';
+import { useAuth, getAuthHeaders } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
-
-// Must match DEFAULT_RESTAURANT_ID in backend supabase.service.ts
-const DEMO_RESTAURANT_ID = '0b9e9031-4223-4124-b633-e3a853abfb8f';
 
 // Types for API responses
 interface CoveragePeriod {
@@ -27,6 +24,11 @@ interface DishRanking {
   neutral: number;
 }
 
+interface SentimentFeedback {
+  text: string;
+  count: number;
+}
+
 interface SentimentSummary {
   positive_count: number;
   neutral_count: number;
@@ -35,48 +37,52 @@ interface SentimentSummary {
   neutral_percent: number;
   negative_percent: number;
   total_visits: number;
+  positive_feedbacks: SentimentFeedback[];
+  negative_feedbacks: SentimentFeedback[];
 }
 
-interface HighlightPositive {
+interface ManagerQuestion {
   text: string;
   table: string;
   time: string;
 }
 
-interface HighlightNegative {
-  text: string;
-  suggestion: string;
-}
-
-// Calculate date based on selection
+// Calculate date based on selection (using local timezone)
 function getDateForSelection(selection: string): string {
   const date = new Date();
   if (selection === '昨日') {
     date.setDate(date.getDate() - 1);
   }
-  return date.toISOString().split('T')[0];
+  // Use local date format instead of toISOString() which returns UTC
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export default function DashboardPage() {
   const [selectedDate, setSelectedDate] = useState('今日');
   const [loading, setLoading] = useState(true);
 
+  // Get user's restaurant ID from auth context
+  const { user } = useAuth();
+  const restaurantId = user?.restaurantId;
+
   // API data states
   const [coverage, setCoverage] = useState<{ periods: CoveragePeriod[] }>({ periods: [] });
   const [dishes, setDishes] = useState<{ dishes: DishRanking[] }>({ dishes: [] });
   const [sentiment, setSentiment] = useState<SentimentSummary | null>(null);
-  const [highlights, setHighlights] = useState<{
-    positive: HighlightPositive[];
-    negative: HighlightNegative[];
-  }>({ positive: [], negative: [] });
+  const [managerQuestions, setManagerQuestions] = useState<ManagerQuestion[]>([]);
 
   // Fetch all dashboard data
   useEffect(() => {
     const fetchData = async () => {
+      if (!restaurantId) return;
+
       setLoading(true);
       const date = getDateForSelection(selectedDate);
       const params = new URLSearchParams({
-        restaurant_id: DEMO_RESTAURANT_ID,
+        restaurant_id: restaurantId,
         date,
       });
 
@@ -107,7 +113,7 @@ export default function DashboardPage() {
 
         if (highlightsRes.ok) {
           const data = await highlightsRes.json();
-          setHighlights(data);
+          setManagerQuestions(data.questions || []);
         }
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
@@ -117,7 +123,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, [selectedDate]);
+  }, [selectedDate, restaurantId]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -125,14 +131,22 @@ export default function DashboardPage() {
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">数据看板</h1>
         <div className="flex items-center gap-3">
-          <select
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white"
-          >
-            <option>今日</option>
-            <option>昨日</option>
-          </select>
+          {/* Date Tabs */}
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            {['今日', '昨日'].map((option) => (
+              <button
+                key={option}
+                onClick={() => setSelectedDate(option)}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  selectedDate === option
+                    ? 'bg-white text-gray-900 shadow-sm font-medium'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
           <UserMenu />
         </div>
       </header>
@@ -241,80 +255,107 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <h2 className="text-sm font-medium text-gray-700 mb-3">情绪概览</h2>
           {sentiment ? (
-            <div className="flex items-center justify-around py-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600">
-                  {sentiment.positive_percent}%
+            <>
+              <div className="flex items-center justify-around py-4">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-600">
+                    {sentiment.positive_percent}%
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">正面情绪</div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">正面情绪</div>
-              </div>
-              <div className="h-12 w-px bg-gray-200" />
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-600">
-                  {sentiment.neutral_percent}%
+                <div className="h-12 w-px bg-gray-200" />
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-gray-600">
+                    {sentiment.neutral_percent}%
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">中性情绪</div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">中性情绪</div>
-              </div>
-              <div className="h-12 w-px bg-gray-200" />
-              <div className="text-center">
-                <div className="text-3xl font-bold text-red-500">
-                  {sentiment.negative_percent}%
+                <div className="h-12 w-px bg-gray-200" />
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-red-500">
+                    {sentiment.negative_percent}%
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">负面情绪</div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">负面情绪</div>
               </div>
-            </div>
+
+              {/* Feedbacks Section */}
+              {(sentiment.positive_feedbacks?.length > 0 ||
+                sentiment.negative_feedbacks?.length > 0) && (
+                <div className="border-t border-gray-100 pt-3 mt-2">
+                  {/* Positive Feedbacks */}
+                  {sentiment.positive_feedbacks?.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs text-gray-500 mb-2">正面评价</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {sentiment.positive_feedbacks.map((fb: SentimentFeedback, i: number) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700"
+                            style={{
+                              fontSize: `${Math.min(12 + fb.count * 2, 16)}px`,
+                              opacity: Math.max(0.6, 1 - i * 0.1),
+                            }}
+                          >
+                            {fb.text}
+                            {fb.count > 1 && (
+                              <span className="ml-1 text-green-500">×{fb.count}</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Negative Feedbacks */}
+                  {sentiment.negative_feedbacks?.length > 0 && (
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">负面评价</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {sentiment.negative_feedbacks.map((fb: SentimentFeedback, i: number) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-600"
+                            style={{
+                              fontSize: `${Math.min(12 + fb.count * 2, 16)}px`,
+                              opacity: Math.max(0.6, 1 - i * 0.1),
+                            }}
+                          >
+                            {fb.text}
+                            {fb.count > 1 && (
+                              <span className="ml-1 text-red-400">×{fb.count}</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           ) : !loading ? (
             <div className="text-center py-4 text-gray-400">暂无数据</div>
           ) : null}
         </div>
 
-        {/* Speech Highlights */}
+        {/* Manager Questions - 话术使用 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">话术红黑榜</h2>
-
-          {/* Positive Examples */}
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-green-600">✓</span>
-              <span className="text-xs font-medium text-gray-600">优秀话术</span>
-            </div>
-            <div className="space-y-2">
-              {highlights.positive.length === 0 && !loading && (
-                <div className="text-center py-2 text-gray-400 text-sm">暂无数据</div>
-              )}
-              {highlights.positive.map((item, i) => (
-                <div
-                  key={i}
-                  className="bg-green-50 rounded-lg p-3 text-sm text-green-800"
-                >
-                  "{item.text}"
-                  <span className="text-green-600 text-xs ml-2">
-                    - {item.table}桌 {item.time}
-                  </span>
+          <h2 className="text-sm font-medium text-gray-700 mb-3">话术使用</h2>
+          <div className="space-y-2">
+            {managerQuestions.length === 0 && !loading && (
+              <div className="text-center py-4 text-gray-400 text-sm">暂无数据</div>
+            )}
+            {managerQuestions.map((q: ManagerQuestion, i: number) => (
+              <div
+                key={i}
+                className="bg-blue-50 rounded-lg p-3 text-sm"
+              >
+                <div className="text-blue-800">"{q.text}"</div>
+                <div className="text-blue-500 text-xs mt-1">
+                  {q.table}桌 · {q.time}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Negative Examples */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-yellow-600">⚠</span>
-              <span className="text-xs font-medium text-gray-600">待改进</span>
-            </div>
-            <div className="space-y-2">
-              {highlights.negative.length === 0 && !loading && (
-                <div className="text-center py-2 text-gray-400 text-sm">暂无数据</div>
-              )}
-              {highlights.negative.map((item, i) => (
-                <div key={i} className="bg-yellow-50 rounded-lg p-3 text-sm">
-                  <div className="text-yellow-800">"{item.text}"</div>
-                  <div className="text-yellow-600 text-xs mt-1">
-                    → {item.suggestion}
-                  </div>
-                </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </main>
