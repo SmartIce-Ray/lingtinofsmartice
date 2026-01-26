@@ -1,5 +1,5 @@
 // Chat Service - AI assistant with tool use for database queries
-// v2.4 - Enhanced SQL validation to prevent injection attacks
+// v2.5 - Added conversation history support for multi-turn context
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -10,7 +10,7 @@ import { SupabaseService } from '../../common/supabase/supabase.service';
 const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
 
 // System prompt for the AI assistant
-const SYSTEM_PROMPT = `你是 Lingtin AI，一个专业的餐饮数据分析助手。你可以帮助餐厅老板分析桌访录音数据。
+const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手。你可以帮助餐厅老板分析桌访录音数据。
 
 ## 你的能力
 你可以使用 query_database 工具查询以下数据表：
@@ -104,11 +104,13 @@ export class ChatService {
     message: string,
     restaurantId: string,
     sessionId: string | undefined,
+    history: Array<{ role: string; content: string }> | undefined,
     res: Response,
   ) {
     console.log('\n========== CHAT SERVICE DEBUG ==========');
     console.log('[CHAT] Message:', message);
     console.log('[CHAT] Restaurant ID:', restaurantId);
+    console.log('[CHAT] History length:', history?.length || 0);
     this.logger.log(`streamResponse called`);
     this.logger.log(`message: ${message}`);
     this.logger.log(`restaurantId: ${restaurantId}`);
@@ -118,9 +120,24 @@ export class ChatService {
       .replace('{{RESTAURANT_ID}}', restaurantId)
       .replace('{{CURRENT_DATE}}', currentDate);
 
-    const messages: ChatMessage[] = [
-      { role: 'user', content: message },
-    ];
+    // Build messages array with conversation history
+    const messages: ChatMessage[] = [];
+
+    // Add history messages (last 10 from frontend)
+    if (history && history.length > 0) {
+      for (const msg of history) {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          messages.push({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          });
+        }
+      }
+      this.logger.log(`Added ${messages.length} history messages`);
+    }
+
+    // Add current user message
+    messages.push({ role: 'user', content: message });
 
     try {
       // Agentic loop: keep calling API until we get a final response (no tool calls)

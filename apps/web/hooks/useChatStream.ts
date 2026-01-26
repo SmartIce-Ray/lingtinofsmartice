@@ -1,5 +1,5 @@
 // Chat Stream Hook - Handle streaming chat responses with session persistence
-// v1.4 - Added Authorization header for authenticated API calls
+// v1.5 - Added conversation history support (last 10 messages sent to backend)
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getAuthHeaders } from '@/contexts/AuthContext';
@@ -113,7 +113,17 @@ export function useChatStream(): UseChatStreamReturn {
     try {
       abortControllerRef.current = new AbortController();
 
-      console.log('[useChatStream] Sending fetch to /api/chat');
+      // Build conversation history for context (last 10 messages, excluding welcome and streaming)
+      // Get current messages state for history (before adding new user message)
+      const currentMessages = messages.filter(
+        msg => msg.id !== 'welcome' && !msg.isStreaming && msg.content.trim()
+      );
+      const historyMessages = currentMessages.slice(-10).map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      console.log('[useChatStream] Sending fetch to /api/chat with history:', historyMessages.length);
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -123,6 +133,7 @@ export function useChatStream(): UseChatStreamReturn {
         body: JSON.stringify({
           message: content,
           restaurant_id: '684f98e6-293a-4362-a0e1-e388483bf89c', // Demo restaurant with test data
+          history: historyMessages,
         }),
         signal: abortControllerRef.current.signal,
       });

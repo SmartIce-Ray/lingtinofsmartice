@@ -1,5 +1,5 @@
 // Chat Controller - API endpoints for AI assistant
-// v1.2 - Added debug logging for troubleshooting
+// v1.3 - Added history parameter for conversation context
 
 import { Controller, Post, Get, Body, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
@@ -15,12 +15,14 @@ export class ChatController {
     @Body('message') message: string,
     @Body('restaurant_id') restaurantId: string,
     @Body('session_id') sessionId: string | undefined,
+    @Body('history') history: Array<{ role: string; content: string }> | undefined,
     @Res() res: Response,
   ) {
     console.log('[ChatController] POST /api/chat/message');
     console.log('[ChatController] message:', message);
     console.log('[ChatController] restaurantId:', restaurantId);
     console.log('[ChatController] sessionId:', sessionId);
+    console.log('[ChatController] history length:', history?.length || 0);
 
     // Set headers for SSE streaming
     res.setHeader('Content-Type', 'text/event-stream');
@@ -28,7 +30,7 @@ export class ChatController {
     res.setHeader('Connection', 'keep-alive');
 
     console.log('[ChatController] Headers set, calling streamResponse');
-    await this.chatService.streamResponse(message, restaurantId, sessionId, res);
+    await this.chatService.streamResponse(message, restaurantId, sessionId, history, res);
     console.log('[ChatController] streamResponse completed');
   }
 
