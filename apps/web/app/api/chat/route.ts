@@ -1,5 +1,5 @@
 // Chat API Route - Streaming proxy to NestJS backend
-// v1.2 - Added: Forward Authorization header for authentication
+// v1.3 - Fixed: Forward history parameter for conversation context
 
 import { NextRequest } from 'next/server';
 
@@ -11,10 +11,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { message, restaurant_id, session_id } = body;
+    const { message, restaurant_id, session_id, history } = body;
     const authHeader = request.headers.get('Authorization');
 
-    console.log('[Chat Route] Request body:', { message, restaurant_id, session_id });
+    console.log('[Chat Route] Request body:', { message, restaurant_id, session_id, historyLength: history?.length || 0 });
 
     // Build headers with auth
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
         message,
         restaurant_id: restaurant_id || 'demo-restaurant-id',
         session_id,
+        history,
       }),
     });
 

@@ -1,8 +1,8 @@
 // Chat Stream Hook - Handle streaming chat responses with session persistence
-// v1.5 - Added conversation history support (last 10 messages sent to backend)
+// v1.8 - Fix: build history BEFORE setMessages to avoid async state issues
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { getAuthHeaders } from '@/contexts/AuthContext';
+import { getAuthHeaders, useAuth } from '@/contexts/AuthContext';
 
 export interface Message {
   id: string;
@@ -17,6 +17,7 @@ interface UseChatStreamReturn {
   isLoading: boolean;
   error: string | null;
   sendMessage: (content: string) => Promise<void>;
+  stopRequest: () => void;
   clearMessages: () => void;
 }
 
@@ -59,6 +60,17 @@ export function useChatStream(): UseChatStreamReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Use ref to always get latest messages in callbacks (fixes stale closure bug)
+  const messagesRef = useRef<Message[]>(messages);
+
+  // Get user's restaurant ID from auth context
+  const { user } = useAuth();
+  const restaurantId = user?.restaurantId;
+
+  // Keep messagesRef in sync with messages state
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // Load messages from sessionStorage on mount
   useEffect(() => {
@@ -89,6 +101,25 @@ export function useChatStream(): UseChatStreamReturn {
       abortControllerRef.current.abort();
     }
 
+    // Build conversation history BEFORE adding new messages (to avoid async state issues)
+    // Include all previous messages plus the current user message
+    const previousMessages = messagesRef.current.filter(
+      msg => msg.id !== 'welcome' && !msg.isStreaming && msg.content.trim()
+    );
+    const historyMessages = [
+      ...previousMessages.slice(-9).map(msg => ({ role: msg.role, content: msg.content })),
+      { role: 'user' as const, content }  // Include current message
+    ];
+
+    // Debug log: show how many messages are being sent
+    console.log('========== CHAT HISTORY DEBUG ==========');
+    console.log(`Total messages in history: ${historyMessages.length}`);
+    historyMessages.forEach((msg, i) => {
+      const preview = msg.content.length > 50 ? msg.content.slice(0, 50) + '...' : msg.content;
+      console.log(`  [${i + 1}] ${msg.role}: "${preview}"`);
+    });
+    console.log('=========================================');
+
     const userMessageId = `user-${Date.now()}`;
     const assistantMessageId = `assistant-${Date.now()}`;
 
@@ -113,16 +144,6 @@ export function useChatStream(): UseChatStreamReturn {
     try {
       abortControllerRef.current = new AbortController();
 
-      // Build conversation history for context (last 10 messages, excluding welcome and streaming)
-      // Get current messages state for history (before adding new user message)
-      const currentMessages = messages.filter(
-        msg => msg.id !== 'welcome' && !msg.isStreaming && msg.content.trim()
-      );
-      const historyMessages = currentMessages.slice(-10).map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-
       console.log('[useChatStream] Sending fetch to /api/chat with history:', historyMessages.length);
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -132,7 +153,7 @@ export function useChatStream(): UseChatStreamReturn {
         },
         body: JSON.stringify({
           message: content,
-          restaurant_id: '684f98e6-293a-4362-a0e1-e388483bf89c', // Demo restaurant with test data
+          restaurant_id: restaurantId,
           history: historyMessages,
         }),
         signal: abortControllerRef.current.signal,
@@ -244,7 +265,7 @@ export function useChatStream(): UseChatStreamReturn {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [isLoading]);
+  }, [isLoading, restaurantId]);
 
   const clearMessages = useCallback(() => {
     // Cancel any ongoing request
@@ -257,11 +278,27 @@ export function useChatStream(): UseChatStreamReturn {
     setIsLoading(false);
   }, []);
 
+  // Stop ongoing request without clearing messages
+  const stopRequest = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    // Mark any streaming message as stopped
+    setMessages(prev => prev.map(msg =>
+      msg.isStreaming
+        ? { ...msg, isStreaming: false, content: msg.content || '(已停止)' }
+        : msg
+    ));
+    setIsLoading(false);
+  }, []);
+
   return {
     messages,
     isLoading,
     error,
     sendMessage,
+    stopRequest,
     clearMessages,
   };
 }

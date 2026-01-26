@@ -1,5 +1,5 @@
 // Chat Service - AI assistant with tool use for database queries
-// v2.7 - Fixed: AI understands user intent first, only queries DB for business data questions
+// v2.8 - Fixed: AI can now access conversation history for context
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -15,7 +15,7 @@ const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手。
 ## 核心原则：先理解用户意图
 收到问题后，**先判断用户真正想问什么**：
 - 如果是闲聊、打招呼、问你是谁 → 直接回答，不查数据库
-- 如果是问对话内容（如"我刚刚说了啥"）→ 直接说"抱歉，我无法回顾我们的对话历史。我是桌访数据分析助手，可以帮你查询菜品反馈、顾客评价等业务数据。"
+- 你可以访问对话历史，如果用户问之前聊过的内容（如"我叫什么"、"我刚说了啥"），请根据对话历史回答
 - **只有当用户明确问桌访数据、菜品反馈、顾客评价、服务质量等业务问题时**，才使用 query_database 工具
 
 ## 你的能力
@@ -129,7 +129,7 @@ export class ChatService {
     // Build messages array with conversation history
     const messages: ChatMessage[] = [];
 
-    // Add history messages (last 10 from frontend)
+    // Add history messages (already includes current user message from frontend)
     if (history && history.length > 0) {
       for (const msg of history) {
         if (msg.role === 'user' || msg.role === 'assistant') {
@@ -139,11 +139,14 @@ export class ChatService {
           });
         }
       }
-      this.logger.log(`Added ${messages.length} history messages`);
+      this.logger.log(`Added ${messages.length} messages from history`);
+    } else {
+      // Fallback: if no history provided, add current message
+      messages.push({ role: 'user', content: message });
     }
 
-    // Add current user message
-    messages.push({ role: 'user', content: message });
+    console.log('[CHAT] Final messages count:', messages.length);
+    console.log('[CHAT] Messages:', messages.map(m => `${m.role}: ${m.content.slice(0, 30)}...`));
 
     try {
       // Agentic loop: keep calling API until we get a final response (no tool calls)

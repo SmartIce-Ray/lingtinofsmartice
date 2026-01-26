@@ -1,5 +1,5 @@
 // ThinkingIndicator - Animated thinking status with fade transitions
-// v1.0 - Dynamic ellipsis animation + fade in/out on status change
+// v1.2 - Simplified: removed bouncing dots, keep only text with animated ellipsis
 
 'use client';
 
@@ -48,23 +48,7 @@ export function ThinkingIndicator({ status }: ThinkingIndicatorProps) {
   const statusWithoutDots = displayStatus.replace(/\.{1,3}$/, '');
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Bouncing dots indicator */}
-      <div className="flex gap-1">
-        <div
-          className="w-2 h-2 bg-primary-400 rounded-full animate-bounce"
-          style={{ animationDelay: '0ms' }}
-        />
-        <div
-          className="w-2 h-2 bg-primary-400 rounded-full animate-bounce"
-          style={{ animationDelay: '150ms' }}
-        />
-        <div
-          className="w-2 h-2 bg-primary-400 rounded-full animate-bounce"
-          style={{ animationDelay: '300ms' }}
-        />
-      </div>
-
+    <div className="flex items-center">
       {/* Status text with fade transition and animated ellipsis */}
       <span
         className={`text-gray-500 text-sm transition-opacity duration-200 ${
