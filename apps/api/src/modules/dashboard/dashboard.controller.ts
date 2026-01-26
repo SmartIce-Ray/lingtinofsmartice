@@ -1,8 +1,9 @@
 // Dashboard Controller - API endpoints for analytics
-// v1.1 - Added sentiment summary and speech highlights endpoints
+// v1.2 - Fixed: Use China timezone for default date
 
 import { Controller, Get, Query } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
+import { getChinaDateString } from '../../common/utils/date';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -16,7 +17,7 @@ export class DashboardController {
   ) {
     return this.dashboardService.getCoverageStats(
       restaurantId,
-      date || new Date().toISOString().split('T')[0],
+      date || getChinaDateString(),
     );
   }
 
@@ -29,7 +30,7 @@ export class DashboardController {
   ) {
     return this.dashboardService.getDishRanking(
       restaurantId,
-      date || new Date().toISOString().split('T')[0],
+      date || getChinaDateString(),
       parseInt(limit || '5', 10),
     );
   }
@@ -54,7 +55,7 @@ export class DashboardController {
   ) {
     return this.dashboardService.getSentimentSummary(
       restaurantId,
-      date || new Date().toISOString().split('T')[0],
+      date || getChinaDateString(),
     );
   }
 
@@ -66,7 +67,7 @@ export class DashboardController {
   ) {
     return this.dashboardService.getSpeechHighlights(
       restaurantId,
-      date || new Date().toISOString().split('T')[0],
+      date || getChinaDateString(),
     );
   }
 }

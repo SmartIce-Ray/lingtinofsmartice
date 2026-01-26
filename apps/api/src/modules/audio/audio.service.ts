@@ -1,8 +1,9 @@
 // Audio Service - Business logic for recording processing
-// v2.3 - Added: getTodayRecordings() and deleteRecording() for frontend sync
+// v2.5 - Fixed: Use China timezone for getTodayRecordings and visit_period
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
+import { getChinaDateString, getChinaHour } from '../../common/utils/date';
 
 @Injectable()
 export class AudioService {
@@ -30,7 +31,7 @@ export class AudioService {
         employee_id: employeeId,
         table_id: tableId,
         audio_url: mockUrl,
-        visit_period: new Date().getHours() < 15 ? 'lunch' : 'dinner',
+        visit_period: getChinaHour() < 15 ? 'lunch' : 'dinner',
       });
 
       return {
@@ -57,7 +58,7 @@ export class AudioService {
       .from('visit-recordings')
       .getPublicUrl(fileName);
 
-    const hour = new Date().getHours();
+    const hour = getChinaHour();
     const visitPeriod = hour < 15 ? 'lunch' : 'dinner';
 
     const visitRecord = await this.supabase.createVisitRecord({
@@ -149,11 +150,11 @@ export class AudioService {
     }
 
     const client = this.supabase.getClient();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getChinaDateString();
 
     const { data, error } = await client
       .from('lingtin_visit_records')
-      .select('id, table_id, status, ai_summary, sentiment_score, created_at')
+      .select('id, table_id, status, ai_summary, sentiment_score, audio_url, created_at')
       .eq('restaurant_id', restaurantId)
       .eq('visit_date', today)
       .order('created_at', { ascending: false });

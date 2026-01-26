@@ -1,8 +1,9 @@
 // Dashboard Service - Analytics business logic
-// v1.6 - Count sentiment by individual feedback items, not by overall visit score
+// v1.7 - Fixed: Use China timezone for date calculations
 
 import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
+import { toChinaDateString } from '../../common/utils/date';
 
 @Injectable()
 export class DashboardService {
@@ -105,7 +106,7 @@ export class DashboardService {
   async getSentimentTrend(restaurantId: string, days: number) {
     const client = this.supabase.getClient();
 
-    // Calculate date range
+    // Calculate date range in China timezone
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days + 1);
@@ -114,8 +115,8 @@ export class DashboardService {
       .from('lingtin_visit_records')
       .select('visit_date, sentiment_score')
       .eq('restaurant_id', restaurantId)
-      .gte('visit_date', startDate.toISOString().split('T')[0])
-      .lte('visit_date', endDate.toISOString().split('T')[0])
+      .gte('visit_date', toChinaDateString(startDate))
+      .lte('visit_date', toChinaDateString(endDate))
       .not('sentiment_score', 'is', null);
 
     if (error) throw error;

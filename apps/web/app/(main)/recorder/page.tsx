@@ -1,5 +1,5 @@
 // Recorder Page - Store manager records table visits with database sync
-// v2.7 - Fixed race condition: prevent duplicate processing of recordings
+// v2.8 - Clear table selection immediately when stopping recording for better UX
 
 'use client';
 
@@ -43,6 +43,8 @@ export default function RecorderPage() {
   const processingIdsRef = useRef<Set<string>>(new Set());
   // Track if retry effect has already run (only run once on mount)
   const retryEffectRanRef = useRef(false);
+  // Store tableId when stopping recording (for use in save effect)
+  const pendingTableIdRef = useRef<string>('');
 
   const { user } = useAuth();
   const restaurantId = user?.restaurantId;
@@ -137,29 +139,34 @@ export default function RecorderPage() {
     await startRecording();
   }, [tableId, startRecording, showToast]);
 
-  // Handle recording stop
+  // Handle recording stop - immediately clear table selection for better UX
   const handleStop = useCallback(async () => {
+    // Save current tableId before clearing UI
+    pendingTableIdRef.current = tableId;
     stopRecording();
     setPendingSave(true);
-  }, [stopRecording]);
+    // Immediately clear table selection UI
+    setTableId('');
+  }, [stopRecording, tableId]);
 
   // When audioBlob is ready after stopping, save and process
   useEffect(() => {
-    if (audioBlob && !isRecording && tableId && pendingSave) {
+    // Use pendingTableIdRef since tableId is cleared immediately on stop
+    const savedTableId = pendingTableIdRef.current;
+    if (audioBlob && !isRecording && savedTableId && pendingSave) {
       setPendingSave(false);
+      pendingTableIdRef.current = ''; // Clear the ref after use
 
       const processAsync = async () => {
         // Step 1: Save locally immediately
-        const recording = await saveRecording(tableId, duration, audioBlob);
-        showToast(`${tableId} 桌录音已保存`, 'success');
+        const recording = await saveRecording(savedTableId, duration, audioBlob);
+        showToast(`${savedTableId} 桌录音已保存`, 'success');
 
         // Step 2: Mark as processing to prevent duplicate processing by retry effect
         processingIdsRef.current.add(recording.id);
 
-        // Step 3: Reset for next recording
-        const savedTableId = tableId;
+        // Step 3: Reset recorder state for next recording
         resetRecording();
-        setTableId('');
 
         // Step 4: Process in background (silent)
         processRecordingInBackground(recording, {
@@ -180,7 +187,7 @@ export default function RecorderPage() {
 
       processAsync();
     }
-  }, [audioBlob, isRecording, tableId, duration, pendingSave, saveRecording, resetRecording, updateRecording, showToast, restaurantId]);
+  }, [audioBlob, isRecording, duration, pendingSave, saveRecording, resetRecording, updateRecording, showToast, restaurantId]);
 
   // Retry failed recording
   const handleRetry = useCallback((id: string) => {

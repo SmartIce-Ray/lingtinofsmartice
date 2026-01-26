@@ -1,10 +1,11 @@
 // Chat Service - AI assistant with tool use for database queries
-// v3.0 - Versatile prompt: combine multiple fields intelligently, guide insights
+// v3.1 - Fixed: Use China timezone for current date
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Response } from 'express';
 import { SupabaseService } from '../../common/supabase/supabase.service';
+import { getChinaDateString } from '../../common/utils/date';
 
 // PackyAPI Configuration (same as Gemini integration in audio processing)
 const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
@@ -128,7 +129,7 @@ export class ChatService {
   ) {
 this.logger.log(`Chat request: ${message.slice(0, 50)}...`);
 
-    const currentDate = new Date().toISOString().split('T')[0];
+    const currentDate = getChinaDateString();
     const systemPrompt = SYSTEM_PROMPT
       .replace('{{RESTAURANT_ID}}', restaurantId)
       .replace('{{CURRENT_DATE}}', currentDate);

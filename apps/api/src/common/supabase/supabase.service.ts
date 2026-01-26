@@ -4,13 +4,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
-
-// Helper: Get current date in China timezone (Asia/Shanghai)
-function getChinaDateString(): string {
-  const now = new Date();
-  // Format as YYYY-MM-DD in China timezone
-  return now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
-}
+import { getChinaDateString, getChinaHour } from '../utils/date';
 
 // Default restaurant ID for demo/testing
 const DEFAULT_RESTAURANT_ID = '0b9e9031-4223-4124-b633-e3a853abfb8f';

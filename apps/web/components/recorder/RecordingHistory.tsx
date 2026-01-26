@@ -1,9 +1,9 @@
 // Recording History Component - Display list of recordings with status
-// v1.3 - Added title prop for date selector support
+// v1.4 - Added audio playback functionality with play/pause button
 
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Recording, RecordingStatus } from '@/hooks/useRecordingStore';
 
 interface RecordingHistoryProps {
@@ -83,6 +83,41 @@ function MiniWaveform() {
         />
       ))}
     </div>
+  );
+}
+
+// Audio play button component
+interface PlayButtonProps {
+  audioUrl?: string;
+  audioData?: string;
+  isPlaying: boolean;
+  onToggle: () => void;
+}
+
+function PlayButton({ audioUrl, audioData, isPlaying, onToggle }: PlayButtonProps) {
+  const hasAudio = audioUrl || audioData;
+
+  if (!hasAudio) return null;
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="w-8 h-8 flex items-center justify-center rounded-full bg-primary-100 hover:bg-primary-200 transition-colors"
+      title={isPlaying ? '暂停' : '播放'}
+    >
+      {isPlaying ? (
+        <svg className="w-4 h-4 text-primary-600" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4 text-primary-600" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -172,6 +207,42 @@ export function RecordingHistory({
   onDelete,
   title = '今日录音',
 }: RecordingHistoryProps) {
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Handle audio playback toggle
+  const handlePlayToggle = (recording: Recording) => {
+    if (playingId === recording.id) {
+      // Stop current playback
+      audioRef.current?.pause();
+      setPlayingId(null);
+    } else {
+      // Stop previous playback
+      audioRef.current?.pause();
+
+      // Get audio source (prefer audioUrl, fallback to audioData)
+      const audioSrc = recording.audioUrl || recording.audioData;
+      if (!audioSrc) return;
+
+      // Create new audio element
+      const audio = new Audio(audioSrc);
+      audioRef.current = audio;
+
+      audio.onended = () => setPlayingId(null);
+      audio.onerror = () => setPlayingId(null);
+
+      audio.play().catch(() => setPlayingId(null));
+      setPlayingId(recording.id);
+    }
+  };
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+    };
+  }, []);
+
   if (recordings.length === 0) {
     return (
       <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
@@ -218,8 +289,14 @@ export function RecordingHistory({
                 </div>
               </div>
 
-              {/* Right: Status and sentiment */}
+              {/* Right: Play button, Status and sentiment */}
               <div className="flex items-center gap-2">
+                <PlayButton
+                  audioUrl={recording.audioUrl}
+                  audioData={recording.audioData}
+                  isPlaying={playingId === recording.id}
+                  onToggle={() => handlePlayToggle(recording)}
+                />
                 <SentimentEmoji sentiment={recording.sentiment} />
                 <StatusBadge status={recording.status} />
               </div>
