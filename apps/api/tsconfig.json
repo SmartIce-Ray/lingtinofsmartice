@@ -1,7 +1,12 @@
+// TypeScript Configuration for NestJS
+// v1.1 - Added composite for monorepo project references
+
 {
   "compilerOptions": {
     "module": "commonjs",
     "declaration": true,
+    "declarationMap": true,
+    "composite": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -9,6 +14,7 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./src",
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
@@ -21,5 +27,10 @@
       "@/*": ["src/*"],
       "@lingtin/types": ["../../packages/types"]
     }
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "references": [
+    { "path": "../../packages/types" }
+  ]
 }
