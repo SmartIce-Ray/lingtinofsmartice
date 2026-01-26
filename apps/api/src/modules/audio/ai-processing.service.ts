@@ -1,5 +1,5 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v3.3 - Removed dish name view dependency, only correct actually mentioned dishes
+// v3.4 - Removed mock fallbacks: throw errors for missing API credentials
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -154,17 +154,8 @@ export class AiProcessingService {
   }
 
   /**
-   * Get dish names from database for correction reference
-   * NOTE: Currently unused - dish name correction removed in v3.3
-   */
-  private async getDishNames(_restaurantId: string): Promise<string[]> {
-    // Use the mock-aware helper from SupabaseService
-    return this.supabase.getDishNames();
-  }
-
-  /**
    * Transcribe audio using 讯飞 STT (WebSocket-based, non-streaming)
-   * Falls back to mock transcript if credentials not configured
+   * Throws error if credentials not configured or STT fails
    */
   private async transcribeAudio(audioUrl: string): Promise<string> {
     const XUNFEI_APP_ID = process.env.XUNFEI_APP_ID;
@@ -173,23 +164,18 @@ export class AiProcessingService {
 
     // Check if 讯飞 credentials are configured
     if (!XUNFEI_APP_ID || !XUNFEI_API_KEY || !XUNFEI_API_SECRET) {
-      this.logger.warn('讯飞 credentials not configured, using mock transcript');
-      return this.getMockTranscript();
+      this.logger.error('讯飞 credentials not configured');
+      throw new Error('STT_NOT_CONFIGURED: 讯飞语音识别未配置');
     }
 
-    try {
-      // Use 讯飞 STT service to transcribe audio
-      const transcript = await this.xunfeiStt.transcribe(audioUrl);
-      return transcript;
-    } catch (error) {
-      this.logger.error(`讯飞 STT failed: ${error.message}, using mock transcript`);
-      return this.getMockTranscript();
-    }
+    // Use 讯飞 STT service to transcribe audio
+    const transcript = await this.xunfeiStt.transcribe(audioUrl);
+    return transcript;
   }
 
   /**
    * Process transcript with Gemini for correction and tagging
-   * v3.3: Removed dish name dictionary - only correct actually mentioned dishes
+   * Throws error if API key not configured or processing fails
    */
   private async processWithGemini(
     transcript: string,
@@ -198,8 +184,8 @@ export class AiProcessingService {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
     if (!GEMINI_API_KEY) {
-      this.logger.warn('Gemini API key not configured, using mock result');
-      return this.getMockAiResult();
+      this.logger.error('Gemini API key not configured');
+      throw new Error('AI_NOT_CONFIGURED: Gemini AI 未配置');
     }
 
     this.logger.log(`Using Gemini API key: ${GEMINI_API_KEY.substring(0, 10)}...`);
@@ -232,71 +218,67 @@ export class AiProcessingService {
 5. customerAnswers: 顾客的回复内容
 6. 如果某项为空，返回空数组[]`;
 
-    try {
-      const response = await fetch(PACKY_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `对话文本：\n${transcript}` },
-          ],
-          temperature: 0.3,
-          max_tokens: 2000,
-        }),
-      });
+    const response = await fetch(PACKY_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${GEMINI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gemini-3-flash-preview',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `对话文本：\n${transcript}` },
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+      }),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-
-      this.logger.log(`Gemini raw response length: ${content?.length || 0}`);
-      this.logger.log(`Gemini raw response (first 300 chars): ${content?.substring(0, 300)}`);
-
-      if (!content) {
-        throw new Error('Empty response from Gemini');
-      }
-
-      // Strip markdown code block markers if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/```\s*$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/```\s*$/, '');
-      }
-
-      this.logger.log(`Cleaned content (first 200 chars): ${cleanContent.substring(0, 200)}`);
-
-      // Parse JSON response - try to find JSON object in the content
-      const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        this.logger.error(`No JSON found in cleaned content. Full content: ${cleanContent.substring(0, 500)}`);
-        throw new Error('Invalid JSON response from Gemini');
-      }
-
-      this.logger.log(`Extracted JSON (first 100 chars): ${jsonMatch[0].substring(0, 100)}`);
-      const result = JSON.parse(jsonMatch[0]);
-
-      return {
-        correctedTranscript: result.correctedTranscript || transcript,
-        aiSummary: result.aiSummary || '无摘要',
-        sentimentScore: parseFloat(result.sentimentScore) || 0.5,
-        feedbacks: result.feedbacks || [],
-        managerQuestions: result.managerQuestions || [],
-        customerAnswers: result.customerAnswers || [],
-      };
-    } catch (error) {
-      this.logger.error(`Gemini processing failed: ${error.message}`);
-      return this.getMockAiResult();
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`Gemini API error: ${response.status} - ${errorText}`);
+      throw new Error(`AI_API_ERROR: Gemini API 错误 ${response.status}`);
     }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+
+    this.logger.log(`Gemini raw response length: ${content?.length || 0}`);
+    this.logger.log(`Gemini raw response (first 300 chars): ${content?.substring(0, 300)}`);
+
+    if (!content) {
+      throw new Error('AI_EMPTY_RESPONSE: Gemini 返回空结果');
+    }
+
+    // Strip markdown code block markers if present
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+    } else if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.replace(/^```\s*/, '').replace(/```\s*$/, '');
+    }
+
+    this.logger.log(`Cleaned content (first 200 chars): ${cleanContent.substring(0, 200)}`);
+
+    // Parse JSON response - try to find JSON object in the content
+    const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      this.logger.error(`No JSON found in cleaned content. Full content: ${cleanContent.substring(0, 500)}`);
+      throw new Error('AI_PARSE_ERROR: 无法解析 AI 返回结果');
+    }
+
+    this.logger.log(`Extracted JSON (first 100 chars): ${jsonMatch[0].substring(0, 100)}`);
+    const result = JSON.parse(jsonMatch[0]);
+
+    return {
+      correctedTranscript: result.correctedTranscript || transcript,
+      aiSummary: result.aiSummary || '无摘要',
+      sentimentScore: parseFloat(result.sentimentScore) || 0.5,
+      feedbacks: result.feedbacks || [],
+      managerQuestions: result.managerQuestions || [],
+      customerAnswers: result.customerAnswers || [],
+    };
   }
 
   /**
@@ -346,36 +328,5 @@ export class AiProcessingService {
     if (updateError) {
       this.logger.error(`Failed to update visit record: ${updateError.message}`);
     }
-  }
-
-  /**
-   * Mock transcript for demo
-   */
-  private getMockTranscript(): string {
-    const samples = [
-      '今天的清蒸路鱼很新鲜，油门大虾也不错，就是等的时间有点长',
-      '招牌红烧肉味道很好，肥而不腻，下次还会来',
-      '宫保鸡丁有点咸了，不过服务态度很好',
-      '蒜蓉粉丝虾很入味，鲜嫩可口，五星好评',
-    ];
-    return samples[Math.floor(Math.random() * samples.length)];
-  }
-
-  /**
-   * Mock AI result for demo
-   */
-  private getMockAiResult(): Omit<ProcessingResult, 'transcript'> {
-    return {
-      correctedTranscript: '今天的清蒸鲈鱼很新鲜，油焖大虾也不错，就是等的时间有点长',
-      aiSummary: '清蒸鲈鱼新鲜，油焖大虾好，上菜稍慢',
-      sentimentScore: 0.72,
-      feedbacks: [
-        { text: '清蒸鲈鱼很新鲜', sentiment: 'positive' },
-        { text: '油焖大虾不错', sentiment: 'positive' },
-        { text: '等待时间有点长', sentiment: 'negative' },
-      ],
-      managerQuestions: ['您好，今天的菜吃得还习惯吗？'],
-      customerAnswers: ['清蒸鲈鱼很新鲜，油焖大虾也不错，就是等的时间有点长'],
-    };
   }
 }

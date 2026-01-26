@@ -1,5 +1,5 @@
 // Background Processor - Handles async upload and AI pipeline
-// v1.5 - Added: Request timeouts, better error handling
+// v1.7 - Added: Auto-retry logic (max 3 attempts) for processing failures
 
 import { Recording, RecordingStatus } from '@/hooks/useRecordingStore';
 import { getAuthHeaders } from '@/contexts/AuthContext';
@@ -12,9 +12,14 @@ interface ProcessingCallbacks {
 // Timeout constants
 const UPLOAD_TIMEOUT_MS = 30000;   // 30 seconds for upload
 const PROCESS_TIMEOUT_MS = 120000; // 2 minutes for AI processing
+const MAX_RETRY_ATTEMPTS = 3;      // Maximum retry attempts
+const RETRY_DELAY_MS = 2000;       // Delay between retries
 
 // Logger prefix for easy filtering
 const LOG_PREFIX = '[Lingtin Pipeline]';
+
+// Track active processing requests for cancellation
+const activeProcessing = new Map<string, AbortController>();
 
 function log(message: string, data?: unknown) {
   console.log(`${LOG_PREFIX} ${message}`, data || '');
@@ -24,13 +29,26 @@ function logError(message: string, error?: unknown) {
   console.error(`${LOG_PREFIX} ERROR: ${message}`, error || '');
 }
 
-// Fetch with timeout
+// Cancel processing for a specific recording
+export function cancelProcessing(recordingId: string): boolean {
+  const controller = activeProcessing.get(recordingId);
+  if (controller) {
+    log(`Cancelling processing for ${recordingId}`);
+    controller.abort();
+    activeProcessing.delete(recordingId);
+    return true;
+  }
+  return false;
+}
+
+// Fetch with timeout and cancellation support
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
-  timeoutMs: number
+  timeoutMs: number,
+  abortController?: AbortController
 ): Promise<Response> {
-  const controller = new AbortController();
+  const controller = abortController || new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -68,15 +86,26 @@ export async function processRecordingInBackground(
   const startTime = Date.now();
   const authHeaders = getAuthHeaders();
 
+  // Create AbortController for this processing session
+  const abortController = new AbortController();
+  activeProcessing.set(id, abortController);
+
   log(`Starting pipeline for recording ${id} (table: ${tableId})`);
 
   if (!audioData) {
     logError(`Recording ${id} has no audio data`);
     callbacks.onError(id, '录音数据丢失');
+    activeProcessing.delete(id);
     return;
   }
 
   try {
+    // Check if already cancelled
+    if (abortController.signal.aborted) {
+      log(`Processing cancelled before start: ${id}`);
+      return;
+    }
+
     // Step 1: Upload to cloud storage
     log(`[Step 1/3] Uploading audio to cloud storage...`);
     callbacks.onStatusChange(id, 'uploading');
@@ -97,7 +126,7 @@ export async function processRecordingInBackground(
       method: 'POST',
       headers: authHeaders,
       body: formData,
-    }, UPLOAD_TIMEOUT_MS);
+    }, UPLOAD_TIMEOUT_MS, abortController);
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text();
@@ -108,34 +137,85 @@ export async function processRecordingInBackground(
     const uploadResult = await uploadResponse.json();
     log(`[Step 1/3] Upload complete in ${Date.now() - uploadStartTime}ms`, uploadResult);
 
-    // Step 2: Trigger AI pipeline processing
+    // Check if cancelled after upload
+    if (abortController.signal.aborted) {
+      log(`Processing cancelled after upload: ${id}`);
+      return;
+    }
+
+    // Step 2: Trigger AI pipeline processing with retry logic
     log(`[Step 2/3] Starting AI processing (STT + Gemini)...`);
     callbacks.onStatusChange(id, 'processing', {
       audioUrl: uploadResult.audioUrl,
     });
 
-    const processStartTime = Date.now();
-    // Use visit_id (UUID from database) instead of frontend recording ID
-    // This ensures the AI results can be saved to the correct database record
-    const processResponse = await fetchWithTimeout('/api/audio/process', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
-      body: JSON.stringify({
-        recording_id: uploadResult.visit_id,
-        audio_url: uploadResult.audioUrl,
-        table_id: tableId,
-        restaurant_id: restaurantId,
-      }),
-    }, PROCESS_TIMEOUT_MS);
+    let processResult = null;
+    let lastError: Error | null = null;
 
-    if (!processResponse.ok) {
-      const errorText = await processResponse.text();
-      logError(`AI processing failed: ${processResponse.status}`, errorText);
-      throw new Error(`处理失败: ${processResponse.status}`);
+    // Retry loop for AI processing
+    for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+      // Check if cancelled before each attempt
+      if (abortController.signal.aborted) {
+        log(`Processing cancelled during retry: ${id}`);
+        return;
+      }
+
+      try {
+        log(`[Step 2/3] AI processing attempt ${attempt}/${MAX_RETRY_ATTEMPTS}...`);
+        const processStartTime = Date.now();
+
+        const processResponse = await fetchWithTimeout('/api/audio/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({
+            recording_id: uploadResult.visit_id,
+            audio_url: uploadResult.audioUrl,
+            table_id: tableId,
+            restaurant_id: restaurantId,
+          }),
+        }, PROCESS_TIMEOUT_MS, abortController);
+
+        if (!processResponse.ok) {
+          const errorText = await processResponse.text();
+          logError(`AI processing failed (attempt ${attempt}): ${processResponse.status}`, errorText);
+          // Try to parse error message from response
+          let errorMsg = `处理失败: ${processResponse.status}`;
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.message) {
+              errorMsg = errorJson.message;
+            }
+          } catch {
+            // Use default error message
+          }
+          throw new Error(errorMsg);
+        }
+
+        processResult = await processResponse.json();
+        log(`[Step 2/3] AI processing complete in ${Date.now() - processStartTime}ms`, processResult);
+        break; // Success, exit retry loop
+
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Don't retry on cancellation
+        if (lastError.name === 'AbortError') {
+          throw lastError;
+        }
+
+        if (attempt < MAX_RETRY_ATTEMPTS) {
+          log(`[Step 2/3] Attempt ${attempt} failed, retrying in ${RETRY_DELAY_MS}ms...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        } else {
+          log(`[Step 2/3] All ${MAX_RETRY_ATTEMPTS} attempts failed`);
+        }
+      }
     }
 
-    const processResult = await processResponse.json();
-    log(`[Step 2/3] AI processing complete in ${Date.now() - processStartTime}ms`, processResult);
+    // If all retries failed, throw the last error
+    if (!processResult && lastError) {
+      throw lastError;
+    }
 
     // Step 3: Update with results
     log(`[Step 3/3] Updating UI with results...`);
@@ -156,17 +236,22 @@ export async function processRecordingInBackground(
     });
 
   } catch (error) {
+    // Check if this was a cancellation
+    if (error instanceof Error && error.name === 'AbortError') {
+      log(`Processing cancelled for ${id}`);
+      return;
+    }
+
     let message = '处理失败';
     if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        message = '请求超时，请检查网络后重试';
-      } else {
-        message = error.message;
-      }
+      message = error.message;
     }
     logError(`Pipeline failed for ${id}`, error);
     callbacks.onError(id, message);
     callbacks.onStatusChange(id, 'error', { errorMessage: message });
+  } finally {
+    // Clean up the tracking
+    activeProcessing.delete(id);
   }
 }
 
