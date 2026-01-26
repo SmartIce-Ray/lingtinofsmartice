@@ -1,9 +1,19 @@
 // Dashboard Service - Analytics business logic
-// v1.7 - Fixed: Use China timezone for date calculations
+// v1.8 - Added: FeedbackWithContext interface for conversation popover
 
 import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { toChinaDateString } from '../../common/utils/date';
+
+// Interface for feedback with conversation context (used in sentiment summary)
+export interface FeedbackWithContext {
+  text: string;
+  visitId: string;
+  tableId: string;
+  managerQuestions: string[];
+  customerAnswers: string[];
+  transcript: string;
+}
 
 @Injectable()
 export class DashboardService {
@@ -143,13 +153,13 @@ export class DashboardService {
   }
 
   // Get sentiment distribution summary for a date with feedback phrases
-  // v1.6 - Count by individual feedback items, not by overall visit score
+  // v1.7 - Added: Include conversation context for each feedback (for popover display)
   async getSentimentSummary(restaurantId: string, date: string) {
     const client = this.supabase.getClient();
 
     const { data, error } = await client
       .from('lingtin_visit_records')
-      .select('feedbacks')
+      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript')
       .eq('restaurant_id', restaurantId)
       .eq('visit_date', date)
       .eq('status', 'processed');
@@ -161,21 +171,29 @@ export class DashboardService {
     let neutral = 0;
     let negative = 0;
 
-    // Collect feedback phrases by sentiment
-    const positiveFeedbacks: string[] = [];
-    const negativeFeedbacks: string[] = [];
+    // Collect feedback with conversation context
+    const positiveFeedbacks: FeedbackWithContext[] = [];
+    const negativeFeedbacks: FeedbackWithContext[] = [];
 
     data?.forEach((record) => {
       const feedbacks = record.feedbacks || [];
       feedbacks.forEach(
         (fb: { text: string; sentiment: string } | string) => {
           if (typeof fb === 'object' && fb.text) {
+            const context: FeedbackWithContext = {
+              text: fb.text,
+              visitId: record.id,
+              tableId: record.table_id,
+              managerQuestions: record.manager_questions || [],
+              customerAnswers: record.customer_answers || [],
+              transcript: record.corrected_transcript || '',
+            };
             if (fb.sentiment === 'positive') {
               positive++;
-              positiveFeedbacks.push(fb.text);
+              positiveFeedbacks.push(context);
             } else if (fb.sentiment === 'negative') {
               negative++;
-              negativeFeedbacks.push(fb.text);
+              negativeFeedbacks.push(context);
             } else if (fb.sentiment === 'neutral') {
               neutral++;
             }
@@ -184,16 +202,26 @@ export class DashboardService {
       );
     });
 
-    // Count feedback frequency and get top feedbacks
-    const countFeedbacks = (feedbacks: string[], limit: number) => {
-      const countMap = new Map<string, number>();
+    // Group feedbacks by text and aggregate contexts
+    const groupFeedbacks = (feedbacks: FeedbackWithContext[], limit: number) => {
+      const groupMap = new Map<string, { count: number; contexts: FeedbackWithContext[] }>();
       feedbacks.forEach((fb) => {
-        countMap.set(fb, (countMap.get(fb) || 0) + 1);
+        const existing = groupMap.get(fb.text) || { count: 0, contexts: [] };
+        existing.count++;
+        // Only keep first 3 contexts per feedback text
+        if (existing.contexts.length < 3) {
+          existing.contexts.push(fb);
+        }
+        groupMap.set(fb.text, existing);
       });
-      return Array.from(countMap.entries())
-        .sort((a, b) => b[1] - a[1])
+      return Array.from(groupMap.entries())
+        .sort((a, b) => b[1].count - a[1].count)
         .slice(0, limit)
-        .map(([text, count]) => ({ text, count }));
+        .map(([text, data]) => ({
+          text,
+          count: data.count,
+          contexts: data.contexts,
+        }));
     };
 
     const total = positive + neutral + negative;
@@ -206,8 +234,8 @@ export class DashboardService {
       neutral_percent: total > 0 ? Math.round((neutral / total) * 100) : 0,
       negative_percent: total > 0 ? Math.round((negative / total) * 100) : 0,
       total_feedbacks: total,
-      positive_feedbacks: countFeedbacks(positiveFeedbacks, 6),
-      negative_feedbacks: countFeedbacks(negativeFeedbacks, 6),
+      positive_feedbacks: groupFeedbacks(positiveFeedbacks, 6),
+      negative_feedbacks: groupFeedbacks(negativeFeedbacks, 6),
     };
   }
 
