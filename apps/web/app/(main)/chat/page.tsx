@@ -1,4 +1,5 @@
 // Chat Page - AI-powered analytics assistant with streaming support
+// v2.3 - Fixed: Wrap useSearchParams in Suspense boundary for Next.js 14 static build
 // v2.2 - Added: Gray italic style for stopped messages
 // v2.1 - Fixed: Remove query param from URL after processing to prevent re-send on refresh
 // v2.0 - Fixed: Wait for hook initialization before processing URL query parameter
@@ -7,14 +8,37 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useChatStream } from '@/hooks/useChatStream';
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator';
 import { UserMenu } from '@/components/layout/UserMenu';
 
+// Wrapper component to handle Suspense boundary for useSearchParams
 export default function ChatPage() {
+  return (
+    <Suspense fallback={<ChatLoadingFallback />}>
+      <ChatContent />
+    </Suspense>
+  );
+}
+
+// Loading fallback component
+function ChatLoadingFallback() {
+  return (
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-gray-50">
+      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-gray-900">AI 智库</h1>
+      </header>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-gray-500">加载中...</div>
+      </div>
+    </div>
+  );
+}
+
+function ChatContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { messages, isLoading, isInitialized, sendMessage, retryMessage, stopRequest, clearMessages } = useChatStream();
