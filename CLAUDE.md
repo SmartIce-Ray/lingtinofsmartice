@@ -12,6 +12,20 @@
 - **AI**: 讯飞STT + Claude SDK
 - **存储**: Supabase Storage
 
+## 部署信息
+
+| 环境 | 平台 | 域名 |
+|------|------|------|
+| 前端 | Cloudflare Pages | https://lt.smartice.ai |
+| 前端备用 | Cloudflare Pages | https://lingtinofsmartice.pages.dev |
+| 后端 | 待部署 (阿里云) | - |
+
+### 前端部署配置
+
+- **构建命令**: `pnpm install && pnpm --filter @lingtin/web build`
+- **输出目录**: `apps/web/out`
+- **环境变量**: `NEXT_PUBLIC_API_URL` = 后端地址
+
 ## 数据库设计
 
 ### 命名规范

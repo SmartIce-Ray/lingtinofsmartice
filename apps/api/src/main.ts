@@ -1,5 +1,5 @@
 // NestJS Application Entry Point
-// v1.3 - Fixed dotenv path to work from any working directory
+// v1.4 - Updated CORS to support multiple origins (localhost + production)
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -22,9 +22,23 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for frontend
+  // Enable CORS for frontend (supports multiple origins)
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://lt.smartice.ai',
+    'https://lingtinofsmartice.pages.dev',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   });
 
