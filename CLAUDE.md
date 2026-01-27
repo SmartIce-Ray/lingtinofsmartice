@@ -18,7 +18,7 @@
 |------|------|------|
 | 前端 | Cloudflare Pages | https://lt.smartice.ai |
 | 前端备用 | Cloudflare Pages | https://lingtinofsmartice.pages.dev |
-| 后端 | 阿里云 SAE | http://47.97.122.195 |
+| 后端 | 阿里云 SAE | https://lt-api.smartice.ai |
 
 ### 后端部署配置 (阿里云 SAE)
 
@@ -26,16 +26,17 @@
 - **命名空间**: `cn-hangzhou:lingtin-backend`
 - **镜像**: `crpi-nlg7u5sflu0ivo3f.cn-hangzhou.personal.cr.aliyuncs.com/lingtin/lingtin-api:v1.1`
 - **规格**: 1 Core, 2 GiB
-- **公网IP**: `47.97.122.195`
+- **公网IP (SLB)**: `47.97.122.195`
 - **SLB ID**: `lb-bp1u1jh2ugqj4ve4ykt6g`
 - **VPC**: `vpc-bp1qdj9fwr0a0jl9t26dg`
-- **API 地址**: `http://47.97.122.195/api`
+- **出网EIP**: `114.55.247.154` (用于访问外部服务如Supabase)
+- **API 地址**: `https://lt-api.smartice.ai/api`
 
 ### 前端部署配置
 
 - **构建命令**: `pnpm install && pnpm --filter @lingtin/web build`
 - **输出目录**: `apps/web/out`
-- **环境变量**: `NEXT_PUBLIC_API_URL` = `http://47.97.122.195`
+- **环境变量**: `NEXT_PUBLIC_API_URL` = `https://lt-api.smartice.ai`
 
 ## 数据库设计
 
