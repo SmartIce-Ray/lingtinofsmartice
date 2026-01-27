@@ -1,8 +1,9 @@
 // Background Processor - Handles async upload and AI pipeline
-// v1.7 - Added: Auto-retry logic (max 3 attempts) for processing failures
+// v1.8 - Changed: Direct backend API calls (removed Next.js proxy layer)
 
 import { Recording, RecordingStatus } from '@/hooks/useRecordingStore';
 import { getAuthHeaders } from '@/contexts/AuthContext';
+import { getApiUrl } from '@/lib/api';
 
 interface ProcessingCallbacks {
   onStatusChange: (id: string, status: RecordingStatus, data?: Partial<Recording>) => void;
@@ -122,7 +123,7 @@ export async function processRecordingInBackground(
     }
 
     const uploadStartTime = Date.now();
-    const uploadResponse = await fetchWithTimeout('/api/audio/upload', {
+    const uploadResponse = await fetchWithTimeout(getApiUrl('api/audio/upload'), {
       method: 'POST',
       headers: authHeaders,
       body: formData,
@@ -164,7 +165,7 @@ export async function processRecordingInBackground(
         log(`[Step 2/3] AI processing attempt ${attempt}/${MAX_RETRY_ATTEMPTS}...`);
         const processStartTime = Date.now();
 
-        const processResponse = await fetchWithTimeout('/api/audio/process', {
+        const processResponse = await fetchWithTimeout(getApiUrl('api/audio/process'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({
@@ -281,7 +282,7 @@ export async function retryPendingFromDatabase(
 
   try {
     // Fetch pending records from API
-    const response = await fetchWithTimeout('/api/audio/pending', {
+    const response = await fetchWithTimeout(getApiUrl('api/audio/pending'), {
       headers: authHeaders,
     }, UPLOAD_TIMEOUT_MS);
 
@@ -306,7 +307,7 @@ export async function retryPendingFromDatabase(
         log(`Processing pending record: ${record.id} (table: ${record.table_id})`);
         onProgress?.(`正在处理 ${record.table_id} 桌录音...`);
 
-        const processResponse = await fetchWithTimeout('/api/audio/process', {
+        const processResponse = await fetchWithTimeout(getApiUrl('api/audio/process'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({

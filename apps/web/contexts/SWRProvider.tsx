@@ -1,10 +1,11 @@
 // SWR Provider - Global data fetching configuration with localStorage persistence
-// v1.1 - Fixed auth token key to match AuthContext
+// v1.2 - Changed: Direct backend API calls (removed Next.js proxy layer)
 
 'use client';
 
 import { SWRConfig, Cache, State } from 'swr';
 import { ReactNode, useEffect, useState } from 'react';
+import { getApiUrl } from '@/lib/api';
 
 // Cache key for localStorage
 const CACHE_KEY = 'lingtin-swr-cache';
@@ -53,6 +54,7 @@ function createLocalStorageProvider(): SWRCache {
 const AUTH_TOKEN_KEY = 'lingtin_auth_token';
 
 // Global fetcher function with auth headers
+// Converts relative URLs to full backend API URLs
 export async function fetcher<T>(url: string): Promise<T> {
   const token = typeof window !== 'undefined'
     ? localStorage.getItem(AUTH_TOKEN_KEY)
@@ -66,7 +68,9 @@ export async function fetcher<T>(url: string): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, { headers });
+  // Convert relative URL to full backend URL
+  const fullUrl = url.startsWith('/') ? getApiUrl(url.slice(1)) : url;
+  const res = await fetch(fullUrl, { headers });
 
   if (!res.ok) {
     const error = new Error('API request failed');

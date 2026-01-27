@@ -1,10 +1,12 @@
 // Chat Stream Hook - Handle streaming chat responses with session persistence
+// v2.3 - Changed: Direct backend API calls (removed Next.js proxy layer)
 // v2.2 - Fixed: Clear thinkingStatus when stopping request, show "被打断" message
 // v2.1 - Exposed isInitialized to fix race condition with URL query parameters
 // v2.0 - Added retry functionality for failed messages
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getAuthHeaders, useAuth } from '@/contexts/AuthContext';
+import { getApiUrl } from '@/lib/api';
 
 export interface Message {
   id: string;
@@ -137,7 +139,7 @@ export function useChatStream(): UseChatStreamReturn {
     try {
       abortControllerRef.current = new AbortController();
 
-      const response = await fetch('/api/chat', {
+      const response = await fetch(getApiUrl('api/chat/message'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

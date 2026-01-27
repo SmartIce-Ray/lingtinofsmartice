@@ -1,10 +1,11 @@
 // Auth Context - Manage authentication state across the app
-// v1.1 - Added restaurantName to user info
+// v1.2 - Changed: Direct backend API calls (removed Next.js proxy layer)
 
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { getApiUrl } from '@/lib/api';
 
 interface User {
   id: string;
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isLoading, user, pathname, router]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch(getApiUrl('api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),

@@ -1,8 +1,9 @@
 // Recording Store - Database as single source of truth
-// v2.4 - Added: Supabase Realtime subscription for live UI updates when records change
+// v2.5 - Changed: Direct backend API calls (removed Next.js proxy layer)
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthHeaders } from '@/contexts/AuthContext';
+import { getApiUrl } from '@/lib/api';
 import { cancelProcessing } from '@/lib/backgroundProcessor';
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -138,7 +139,7 @@ export function useRecordingStore(restaurantId?: string) {
       }
 
       try {
-        const response = await fetch(`/api/audio/today?restaurant_id=${restaurantId}`, {
+        const response = await fetch(getApiUrl(`api/audio/today?restaurant_id=${restaurantId}`), {
           headers: getAuthHeaders(),
         });
 
@@ -331,7 +332,7 @@ export function useRecordingStore(restaurantId?: string) {
 
     // Call API to delete from database (if it's a database record)
     try {
-      await fetch(`/api/audio/${id}`, {
+      await fetch(getApiUrl(`api/audio/${id}`), {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
