@@ -1,5 +1,5 @@
 // Chat Service - AI assistant with tool use for database queries
-// v3.1 - Fixed: Use China timezone for current date
+// v3.2 - Switched from PackyAPI to OpenRouter for faster response
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -7,8 +7,8 @@ import { Response } from 'express';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { getChinaDateString } from '../../common/utils/date';
 
-// PackyAPI Configuration (same as Gemini integration in audio processing)
-const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
+// OpenRouter API Configuration
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // System prompt for the AI assistant
 const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手，帮助餐厅老板洞察桌访数据。
@@ -117,7 +117,7 @@ export class ChatService {
   private readonly logger = new Logger(ChatService.name);
 
   constructor(private readonly supabase: SupabaseService) {
-    this.logger.log(`Initializing with GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'SET' : 'NOT SET'}`);
+    this.logger.log(`Initializing with OPENROUTER_API_KEY: ${process.env.OPENROUTER_API_KEY ? 'SET' : 'NOT SET'}`);
   }
 
   async streamResponse(
@@ -252,17 +252,17 @@ this.logger.log(`Messages in context: ${messages.length}`);
   }
 
   /**
-   * Call Gemini API via PackyAPI endpoint (same as audio processing)
+   * Call AI API via OpenRouter endpoint
    */
   private async callClaudeAPI(systemPrompt: string, messages: ChatMessage[]) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
+      throw new Error('OPENROUTER_API_KEY not configured');
     }
 
     const requestBody = {
-      model: 'gemini-3-flash-preview',
+      model: 'google/gemini-2.0-flash-001',
       max_tokens: 2048,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -272,9 +272,9 @@ this.logger.log(`Messages in context: ${messages.length}`);
       tool_choice: 'auto',
     };
 
-    this.logger.log(`Calling PackyAPI with ${messages.length} messages`);
+    this.logger.log(`Calling OpenRouter with ${messages.length} messages`);
 
-    const response = await fetch(PACKY_API_URL, {
+    const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

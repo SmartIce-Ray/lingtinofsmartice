@@ -1,12 +1,12 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v3.4 - Removed mock fallbacks: throw errors for missing API credentials
+// v3.5 - Switched from PackyAPI to OpenRouter for faster response
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { XunfeiSttService } from './xunfei-stt.service';
 
-// Gemini via PackyAPI Configuration
-const PACKY_API_URL = 'https://www.packyapi.com/v1/chat/completions';
+// OpenRouter API Configuration
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Feedback item with sentiment label
 export interface FeedbackItem {
@@ -174,21 +174,21 @@ export class AiProcessingService {
   }
 
   /**
-   * Process transcript with Gemini for correction and tagging
+   * Process transcript with AI for correction and tagging
    * Throws error if API key not configured or processing fails
    */
   private async processWithGemini(
     transcript: string,
   ): Promise<Omit<ProcessingResult, 'transcript'>> {
     // Read API key at runtime
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
-    if (!GEMINI_API_KEY) {
-      this.logger.error('Gemini API key not configured');
-      throw new Error('AI_NOT_CONFIGURED: Gemini AI 未配置');
+    if (!OPENROUTER_API_KEY) {
+      this.logger.error('OpenRouter API key not configured');
+      throw new Error('AI_NOT_CONFIGURED: OpenRouter AI 未配置');
     }
 
-    this.logger.log(`Using Gemini API key: ${GEMINI_API_KEY.substring(0, 10)}...`);
+    this.logger.log(`Using OpenRouter API key: ${OPENROUTER_API_KEY.substring(0, 15)}...`);
 
     const systemPrompt = `分析餐饮桌访对话，提取结构化信息。
 
@@ -218,14 +218,14 @@ export class AiProcessingService {
 5. customerAnswers: 顾客的回复内容
 6. 如果某项为空，返回空数组[]`;
 
-    const response = await fetch(PACKY_API_URL, {
+    const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gemini-3-flash-preview',
+        model: 'google/gemini-2.0-flash-001',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `对话文本：\n${transcript}` },
@@ -237,18 +237,18 @@ export class AiProcessingService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      this.logger.error(`Gemini API error: ${response.status} - ${errorText}`);
-      throw new Error(`AI_API_ERROR: Gemini API 错误 ${response.status}`);
+      this.logger.error(`OpenRouter API error: ${response.status} - ${errorText}`);
+      throw new Error(`AI_API_ERROR: OpenRouter API 错误 ${response.status}`);
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 
-    this.logger.log(`Gemini raw response length: ${content?.length || 0}`);
-    this.logger.log(`Gemini raw response (first 300 chars): ${content?.substring(0, 300)}`);
+    this.logger.log(`OpenRouter raw response length: ${content?.length || 0}`);
+    this.logger.log(`OpenRouter raw response (first 300 chars): ${content?.substring(0, 300)}`);
 
     if (!content) {
-      throw new Error('AI_EMPTY_RESPONSE: Gemini 返回空结果');
+      throw new Error('AI_EMPTY_RESPONSE: OpenRouter 返回空结果');
     }
 
     // Strip markdown code block markers if present
