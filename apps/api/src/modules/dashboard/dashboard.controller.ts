@@ -1,8 +1,9 @@
 // Dashboard Controller - API endpoints for analytics
+// v1.5 - Added: /restaurant/:id endpoint for restaurant detail view
 // v1.4 - Added: /restaurants-overview endpoint for admin dashboard with sentiment scores
 // v1.3 - Added: /restaurants endpoint for multi-store admin view
 
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Param } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { getChinaDateString } from '../../common/utils/date';
 
@@ -79,6 +80,18 @@ export class DashboardController {
     @Query('date') date?: string,
   ) {
     return this.dashboardService.getSpeechHighlights(
+      restaurantId,
+      date || getChinaDateString(),
+    );
+  }
+
+  // GET /api/dashboard/restaurant/:id - Get restaurant detail with visit records
+  @Get('restaurant/:id')
+  async getRestaurantDetail(
+    @Param('id') restaurantId: string,
+    @Query('date') date?: string,
+  ) {
+    return this.dashboardService.getRestaurantDetail(
       restaurantId,
       date || getChinaDateString(),
     );

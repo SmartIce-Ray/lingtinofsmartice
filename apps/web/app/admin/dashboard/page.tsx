@@ -153,7 +153,7 @@ export default function AdminDashboardPage() {
               <div
                 key={rest.id}
                 className="bg-white rounded-2xl p-4 shadow-sm active:bg-gray-50 cursor-pointer transition-colors"
-                onClick={() => router.push(`/admin/restaurant/${rest.id}`)}
+                onClick={() => router.push(`/admin/restaurant-detail?id=${rest.id}`)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>

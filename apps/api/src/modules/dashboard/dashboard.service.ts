@@ -1,4 +1,5 @@
 // Dashboard Service - Analytics business logic
+// v2.1 - Added: getRestaurantDetail() for restaurant detail page
 // v2.0 - Added: getRestaurantsOverview() for admin dashboard with sentiment scores
 // v1.9 - Added: Multi-restaurant support for administrator role
 //        - getRestaurantList() returns all active restaurants
@@ -496,5 +497,50 @@ export class DashboardService {
     });
 
     return { questions: questions.slice(0, 6) };
+  }
+
+  // Get restaurant detail with visit records for a specific date
+  async getRestaurantDetail(restaurantId: string, date: string) {
+    const client = this.supabase.getClient();
+
+    // Get restaurant info
+    const { data: restaurant, error: restError } = await client
+      .from('master_restaurant')
+      .select('id, restaurant_name')
+      .eq('id', restaurantId)
+      .single();
+
+    if (restError) throw restError;
+
+    // Get all visit records for this restaurant on this date
+    const { data: visits, error: visitsError } = await client
+      .from('lingtin_visit_records')
+      .select('id, table_id, visit_period, sentiment_score, ai_summary, keywords, manager_questions, customer_answers, created_at')
+      .eq('restaurant_id', restaurantId)
+      .eq('visit_date', date)
+      .eq('status', 'processed')
+      .order('created_at', { ascending: false });
+
+    if (visitsError) throw visitsError;
+
+    // Calculate summary
+    const sentimentScores = (visits || [])
+      .filter((v) => v.sentiment_score !== null)
+      .map((v) => v.sentiment_score);
+    const avgSentiment = sentimentScores.length > 0
+      ? sentimentScores.reduce((a, b) => a + b, 0) / sentimentScores.length
+      : null;
+
+    return {
+      restaurant: {
+        id: restaurant.id,
+        name: restaurant.restaurant_name,
+      },
+      visits: visits || [],
+      summary: {
+        total_visits: visits?.length || 0,
+        avg_sentiment: avgSentiment !== null ? Math.round(avgSentiment * 100) / 100 : null,
+      },
+    };
   }
 }
