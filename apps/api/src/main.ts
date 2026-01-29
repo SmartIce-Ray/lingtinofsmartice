@@ -25,6 +25,7 @@ async function bootstrap() {
   // Enable CORS for frontend (supports multiple origins)
   const allowedOrigins = [
     'http://localhost:3000',
+    'http://localhost:3002',
     'https://lt.smartice.ai',
     'https://lingtinofsmartice.pages.dev',
     process.env.FRONTEND_URL,

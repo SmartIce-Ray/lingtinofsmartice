@@ -1,4 +1,5 @@
 // Chat Stream Hook - Handle streaming chat responses with session persistence
+// v2.4 - Added role_code, user_name, employee_id for role-based prompts and chat history
 // v2.3 - Changed: Direct backend API calls (removed Next.js proxy layer)
 // v2.2 - Fixed: Clear thinkingStatus when stopping request, show "被打断" message
 // v2.1 - Exposed isInitialized to fix race condition with URL query parameters
@@ -75,6 +76,9 @@ export function useChatStream(): UseChatStreamReturn {
   // Get user's restaurant ID from auth context
   const { user } = useAuth();
   const restaurantId = user?.restaurantId;
+  const roleCode = user?.roleCode;
+  const userName = user?.employeeName;
+  const employeeId = user?.id;
 
   // Keep messagesRef in sync with messages state
   useEffect(() => {
@@ -149,6 +153,9 @@ export function useChatStream(): UseChatStreamReturn {
           message: content,
           restaurant_id: restaurantId,
           history: historyMessages,
+          role_code: roleCode,
+          user_name: userName,
+          employee_id: employeeId,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -244,7 +251,7 @@ export function useChatStream(): UseChatStreamReturn {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [isLoading, restaurantId]);
+  }, [isLoading, restaurantId, roleCode, userName, employeeId]);
 
   const clearMessages = useCallback(() => {
     // Cancel any ongoing request

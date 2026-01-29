@@ -1,5 +1,5 @@
 // Auth Context - Manage authentication state across the app
-// v1.2 - Changed: Direct backend API calls (removed Next.js proxy layer)
+// v1.3 - Added role-based routing: administrator goes to /admin/dashboard, others to /recorder
 
 'use client';
 
@@ -81,8 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_KEY, data.access_token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
 
-    // Redirect to recorder page
-    router.push('/recorder');
+    // Route based on role: administrator goes to admin dashboard, others to recorder
+    if (data.user.roleCode === 'administrator') {
+      router.push('/admin/dashboard');
+    } else {
+      router.push('/recorder');
+    }
   }, [router]);
 
   const logout = useCallback(() => {

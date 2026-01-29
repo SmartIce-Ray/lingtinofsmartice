@@ -1,5 +1,5 @@
 // Chat Controller - API endpoints for AI assistant
-// v1.3 - Added history parameter for conversation context
+// v1.4 - Added role_code, user_name, employee_id for role-based prompts and chat history
 
 import { Controller, Post, Get, Body, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
@@ -16,12 +16,16 @@ export class ChatController {
     @Body('restaurant_id') restaurantId: string,
     @Body('session_id') sessionId: string | undefined,
     @Body('history') history: Array<{ role: string; content: string }> | undefined,
+    @Body('role_code') roleCode: string | undefined,
+    @Body('user_name') userName: string | undefined,
+    @Body('employee_id') employeeId: string | undefined,
     @Res() res: Response,
   ) {
     console.log('[ChatController] POST /api/chat/message');
     console.log('[ChatController] message:', message);
     console.log('[ChatController] restaurantId:', restaurantId);
-    console.log('[ChatController] sessionId:', sessionId);
+    console.log('[ChatController] roleCode:', roleCode);
+    console.log('[ChatController] userName:', userName);
     console.log('[ChatController] history length:', history?.length || 0);
 
     // Set headers for SSE streaming
@@ -30,7 +34,16 @@ export class ChatController {
     res.setHeader('Connection', 'keep-alive');
 
     console.log('[ChatController] Headers set, calling streamResponse');
-    await this.chatService.streamResponse(message, restaurantId, sessionId, history, res);
+    await this.chatService.streamResponse(
+      message,
+      restaurantId,
+      sessionId,
+      history,
+      roleCode,
+      userName,
+      employeeId,
+      res,
+    );
     console.log('[ChatController] streamResponse completed');
   }
 

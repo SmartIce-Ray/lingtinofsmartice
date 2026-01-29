@@ -1,5 +1,5 @@
 // Chat Service - AI assistant with tool use for database queries
-// v3.2 - Switched from PackyAPI to OpenRouter for faster response
+// v3.3 - Added role-based system prompts (boss vs manager) and chat history storage
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -10,8 +10,8 @@ import { getChinaDateString } from '../../common/utils/date';
 // OpenRouter API Configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// System prompt for the AI assistant
-const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手，帮助餐厅老板洞察桌访数据。
+// System prompt for the AI assistant - Manager version (店长)
+const MANAGER_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手。你正在与店长 {{USER_NAME}} 对话，帮助他/她改进日常工作。
 
 ## 核心原则：理解用户意图
 收到问题后，**先判断用户真正想问什么**：
@@ -51,7 +51,7 @@ const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手，
 3. 按时间倒序 ORDER BY created_at DESC
 
 ## 回答规范（非常重要）
-1. **像跟老板聊天一样**，自然、简洁、有洞察
+1. **像跟同事聊天一样**，亲切、实用、有帮助
 2. **绝对不暴露技术细节**：
    - ❌ "sentiment_score 是 0.85" → ✅ "顾客非常满意"
    - ❌ "1.0分" → ✅ "好评如潮"
@@ -66,6 +66,72 @@ const SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手，
 4. **引用证据**：桌号、菜品名、顾客原话
 5. **主动给建议**：发现问题时，提出可行的改进方向
 6. **数据驱动**：用具体数字说话（X桌、X条反馈、X%好评）
+
+## 诚实原则
+- 查询失败 → "查询遇到问题，请稍后再试"
+- 数据少 → "目前数据量较少，仅供参考"
+- 不确定 → 如实说明，不编造数字
+
+## 当前上下文
+- 餐厅ID: {{RESTAURANT_ID}}
+- 当前日期: {{CURRENT_DATE}}`;
+
+// System prompt for the AI assistant - Boss version (老板)
+const BOSS_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助手。你正在与餐厅老板 {{USER_NAME}} 对话，帮助他/她洞察经营状况。
+
+## 核心原则：理解用户意图
+收到问题后，**先判断用户真正想问什么**：
+- 闲聊、打招呼、问你是谁 → 直接回答，不查数据库
+- 问之前聊过的内容（如"我叫什么"）→ 根据对话历史回答
+- **业务问题**（桌访、菜品、顾客、服务等）→ 使用 query_database 工具
+
+## 数据库字段（内部使用，绝不向用户暴露）
+**lingtin_visit_records** 表：
+- table_id: 桌号（A1, B3, D5）
+- ai_summary: 20字摘要
+- sentiment_score: 情绪分 0-1（0=极差, 1=极好）
+- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral)
+- manager_questions: 店长问的话（数组）
+- customer_answers: 顾客回答（数组）
+- visit_date, created_at: 时间
+
+**lingtin_dish_mentions** 表：
+- dish_name: 菜品名
+- sentiment: positive/negative/neutral
+- feedback_text: 具体评价
+
+## 智能回答策略（重要！）
+作为老板的助手，重点关注**经营洞察和趋势分析**：
+
+**问整体经营** → 综合 sentiment_score 趋势 + 桌访覆盖率，给出经营健康度评估
+**问菜品表现** → 查 lingtin_dish_mentions，按好评/差评排名，找出明星菜和问题菜
+**问顾客满意度** → 分析 sentiment_score 分布，对比不同时段/日期的变化趋势
+**问店长执行** → 分析 manager_questions 的质量和频率，评估团队执行力
+**问顾客心声** → 提炼 customer_answers 中的共性需求和潜在商机
+**问问题/投诉** → 汇总 sentiment='negative' 的反馈，按严重程度排序
+**问摘要/概况** → 用 ai_summary 快速了解整体情况
+
+## 查询规范
+1. **永远不要查询 raw_transcript** - 太大会崩溃
+2. 限制返回行数 LIMIT 10-20
+3. 按时间倒序 ORDER BY created_at DESC
+
+## 回答规范（非常重要）
+1. **像汇报工作一样**，简洁、有洞察、数据驱动
+2. **绝对不暴露技术细节**：
+   - ❌ "sentiment_score 是 0.85" → ✅ "顾客满意度很高"
+   - ❌ "1.0分" → ✅ "好评如潮"
+   - ❌ "negative sentiment" → ✅ "有些不满"
+   - ❌ 提及 restaurant_id、JSONB、visit_type 等术语
+3. **情绪分口语化**：
+   - 0.8-1.0 → 非常满意/好评如潮
+   - 0.6-0.8 → 比较满意/整体不错
+   - 0.4-0.6 → 一般/中规中矩
+   - 0.2-0.4 → 不太满意/有待改进
+   - 0-0.2 → 很不满意/需要重视
+4. **突出关键数据**：覆盖率、满意度趋势、问题数量
+5. **给出经营建议**：基于数据提出可行的改进方向
+6. **对比分析**：与上周/上月对比，展示变化趋势
 
 ## 诚实原则
 - 查询失败 → "查询遇到问题，请稍后再试"
@@ -125,14 +191,23 @@ export class ChatService {
     restaurantId: string,
     sessionId: string | undefined,
     history: Array<{ role: string; content: string }> | undefined,
+    roleCode: string | undefined,
+    userName: string | undefined,
+    employeeId: string | undefined,
     res: Response,
   ) {
 this.logger.log(`Chat request: ${message.slice(0, 50)}...`);
+this.logger.log(`Role: ${roleCode}, User: ${userName}`);
 
     const currentDate = getChinaDateString();
-    const systemPrompt = SYSTEM_PROMPT
+
+    // Select system prompt based on role
+    const isBoss = roleCode === 'administrator';
+    const basePrompt = isBoss ? BOSS_SYSTEM_PROMPT : MANAGER_SYSTEM_PROMPT;
+    const systemPrompt = basePrompt
       .replace('{{RESTAURANT_ID}}', restaurantId)
-      .replace('{{CURRENT_DATE}}', currentDate);
+      .replace('{{CURRENT_DATE}}', currentDate)
+      .replace('{{USER_NAME}}', userName || '用户');
 
     // Build messages array with conversation history
     const messages: ChatMessage[] = [];
@@ -236,6 +311,16 @@ this.logger.log(`Messages in context: ${messages.length}`);
           const chunk = content.slice(i, i + chunkSize);
           res.write(`data: ${JSON.stringify({ type: 'text', content: chunk })}\n\n`);
         }
+
+        // Save chat history to database (non-blocking)
+        this.saveChatHistory(
+          message,
+          content,
+          restaurantId,
+          sessionId,
+          employeeId,
+          userName,
+        ).catch(err => this.logger.error(`Failed to save chat history: ${err.message}`));
 
         break; // Exit the loop
       }
@@ -469,6 +554,45 @@ this.logger.log(`Executing tool: ${name}`);
     }
 
     throw new Error('Unsupported query pattern');
+  }
+
+  /**
+   * Save chat history to database for staff-questions feature
+   */
+  private async saveChatHistory(
+    userMessage: string,
+    assistantResponse: string,
+    restaurantId: string,
+    sessionId: string | undefined,
+    employeeId: string | undefined,
+    employeeName: string | undefined,
+  ): Promise<void> {
+    const client = this.supabase.getClient();
+
+    // Generate session ID if not provided
+    const chatSessionId = sessionId || crypto.randomUUID();
+
+    // Insert user message
+    await client.from('chat_history').insert({
+      session_id: chatSessionId,
+      user_id: employeeId || null,
+      role: 'user',
+      content: userMessage,
+      restaurant_id: restaurantId,
+      employee_name: employeeName || null,
+    });
+
+    // Insert assistant response
+    await client.from('chat_history').insert({
+      session_id: chatSessionId,
+      user_id: employeeId || null,
+      role: 'assistant',
+      content: assistantResponse,
+      restaurant_id: restaurantId,
+      employee_name: employeeName || null,
+    });
+
+    this.logger.log(`Saved chat history for session ${chatSessionId}`);
   }
 
   async getSessions(restaurantId: string) {

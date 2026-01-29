@@ -1,11 +1,12 @@
 // Root Application Module
-// v1.1 - Added AuthModule with global JWT guard
+// v1.2 - Added StaffModule for boss to view employee data
 
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AudioModule } from './modules/audio/audio.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ChatModule } from './modules/chat/chat.module';
+import { StaffModule } from './modules/staff/staff.module';
 import { AuthModule, JwtAuthGuard } from './modules/auth';
 import { SupabaseModule } from './common/supabase/supabase.module';
 
@@ -16,6 +17,7 @@ import { SupabaseModule } from './common/supabase/supabase.module';
     AudioModule,
     DashboardModule,
     ChatModule,
+    StaffModule,
   ],
   providers: [
     // Apply JWT guard globally - all routes require auth by default
