@@ -1,5 +1,5 @@
 // Audio Service - Business logic for recording processing
-// v2.6 - Added updateRecordingStatus method for error recovery
+// v2.7 - Fixed: URL encode tableId for Supabase Storage (Chinese chars not supported)
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -44,7 +44,9 @@ export class AudioService {
 
     // Production: Upload to Supabase Storage
     const client = this.supabase.getClient();
-    const fileName = `${restaurantId}/${Date.now()}_${tableId}.webm`;
+    // URL encode tableId to handle Chinese characters (e.g., "外13" -> "外13" encoded)
+    const safeTableId = encodeURIComponent(tableId);
+    const fileName = `${restaurantId}/${Date.now()}_${safeTableId}.webm`;
 
     const { error: uploadError } = await client.storage
       .from('visit-recordings')
