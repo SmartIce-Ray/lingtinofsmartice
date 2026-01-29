@@ -1,7 +1,7 @@
-# Dockerfile for Lingtin API - v1.2
+# Dockerfile for Lingtin API - v1.3
 # NestJS backend with FFmpeg support for audio processing
 # Build from monorepo root: docker build -f apps/api/Dockerfile -t <image> .
-# v1.2 - Fixed: Include devDependencies for nest build command
+# v1.3 - Fixed: Use --prod=false to include devDependencies for nest build
 
 FROM node:18-alpine
 
@@ -21,8 +21,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/types/package.json ./packages/types/
 
-# Install all dependencies (including devDependencies for build)
-RUN pnpm install --frozen-lockfile --filter @lingtin/api...
+# Install all dependencies including devDependencies (needed for nest build)
+RUN pnpm install --frozen-lockfile --prod=false --filter @lingtin/api...
 
 # Copy source code (api + shared types)
 COPY apps/api ./apps/api
@@ -32,7 +32,7 @@ COPY packages/types ./packages/types
 WORKDIR /app/apps/api
 RUN pnpm build
 
-# Prune devDependencies after build
+# Prune devDependencies after build to reduce image size
 RUN pnpm prune --prod
 
 # Expose port

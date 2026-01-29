@@ -18,19 +18,19 @@
 |------|------|------|
 | 前端 | Cloudflare Pages | https://lt.smartice.ai |
 | 前端备用 | Cloudflare Pages | https://lingtinofsmartice.pages.dev |
-| 后端 | Zeabur | https://lt-api.smartice.ai |
+| 后端 | Zeabur | https://lingtinapi.preview.aliyun-zeabur.cn |
 
 ### 后端部署配置 (Zeabur)
 
 - **平台**: Zeabur (https://zeabur.com)
 - **项目ID**: `697a5cfa06505fdd547f6889`
-- **服务ID**: `697a5def06505fdd547f68c8`
+- **服务ID**: `697a6376f2339c9e766cb99d`
 - **服务名**: `lingtinofsmartice`
-- **区域**: 待配置 (推荐香港/新加坡)
+- **区域**: 阿里云中国区 (aliyun-zeabur.cn)
 - **根目录**: `/apps/api`
 - **框架**: NestJS + pnpm
 - **自动HTTPS**: ✅ Zeabur 自动提供
-- **API 地址**: `https://lt-api.smartice.ai/api`
+- **API 地址**: `https://lingtinapi.preview.aliyun-zeabur.cn/api`
 
 #### 环境变量
 
@@ -54,7 +54,7 @@ ANTHROPIC_API_KEY=<见.env>
 
 - **构建命令**: `pnpm install && pnpm --filter @lingtin/web build`
 - **输出目录**: `apps/web/out`
-- **环境变量**: `NEXT_PUBLIC_API_URL` = `https://lt-api.smartice.ai`
+- **环境变量**: `NEXT_PUBLIC_API_URL` = `https://lingtinapi.preview.aliyun-zeabur.cn`
 
 ## 数据库设计
 
