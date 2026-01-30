@@ -70,6 +70,26 @@ pnpm 在 Docker 中默认只安装 `dependencies`，不安装 `devDependencies`�
 - **构建命令**: `pnpm install && pnpm --filter @lingtin/web build`
 - **输出目录**: `apps/web/out`
 - **环境变量**: `NEXT_PUBLIC_API_URL` = `https://lingtinapi.preview.aliyun-zeabur.cn`
+- **项目名**: `lingtinofsmartice`
+
+### 部署状态检查命令
+
+```bash
+# 前端 (Cloudflare Pages) - 查看部署列表和状态
+npx wrangler pages deployment list --project-name=lingtinofsmartice
+
+# 后端 (Zeabur) - 查看服务列表
+zeabur service list -i=false
+
+# 后端 (Zeabur) - 查看服务详情
+zeabur service get --id 697a6376f2339c9e766cb99d -i=false
+
+# 后端 (Zeabur) - 手动触发重新部署
+zeabur service redeploy --id 697a6376f2339c9e766cb99d -y -i=false
+
+# 后端健康检查 (返回 401 表示 API 正常运行)
+curl -s "https://lingtinapi.preview.aliyun-zeabur.cn/api/audio/today?restaurant_id=test"
+```
 
 ## 数据库设计
 
