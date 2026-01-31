@@ -1,5 +1,5 @@
 // Auth Controller - Login endpoint
-// v1.1 - Added health check endpoint for debugging
+// v1.0 - Initial implementation
 
 import { Controller, Post, Body, UnauthorizedException, Logger, Get, UseGuards } from '@nestjs/common';
 import { AuthService, AuthUser } from './auth.service';
@@ -17,20 +17,6 @@ export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
   constructor(private readonly authService: AuthService) {}
-
-  @Public()
-  @Get('health')
-  async healthCheck() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      env: {
-        SUPABASE_URL: process.env.SUPABASE_URL ? 'SET' : 'NOT SET',
-        SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY ? `SET (${process.env.SUPABASE_SERVICE_KEY?.substring(0, 20)}...)` : 'NOT SET',
-        NODE_ENV: process.env.NODE_ENV || 'not set',
-      },
-    };
-  }
 
   @Public()
   @Post('login')
