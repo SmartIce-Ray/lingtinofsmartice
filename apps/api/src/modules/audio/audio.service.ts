@@ -1,5 +1,5 @@
 // Audio Service - Business logic for recording processing
-// v2.8 - Migrated storage bucket from 'visit-recordings' to 'lingtin/recordings/'
+// v2.9 - Fixed Chinese tableId causing Supabase Storage 400 error (包1 -> bao1)
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -43,11 +43,13 @@ export class AudioService {
     }
 
     // Production: Upload to Supabase Storage
-    // Bucket: 'lingtin', Path: 'recordings/{restaurantId}/{timestamp}_{tableId}.webm'
+    // Bucket: 'lingtin', Path: 'recordings/{restaurantId}/{timestamp}_{safeTableId}.webm'
     const client = this.supabase.getClient();
-    // URL encode tableId to handle Chinese characters (e.g., "外13" -> "外13" encoded)
-    const safeTableId = encodeURIComponent(tableId);
+    // Convert Chinese tableId to ASCII-safe format for Supabase Storage
+    // Chinese chars like "包1", "外13" -> "bao1", "wai13" using simple mapping
+    const safeTableId = this.toAsciiTableId(tableId);
     const filePath = `recordings/${restaurantId}/${Date.now()}_${safeTableId}.webm`;
+    this.logger.log(`Uploading to path: ${filePath} (original tableId: ${tableId})`);
 
     const { error: uploadError } = await client.storage
       .from('lingtin')
@@ -220,5 +222,39 @@ export class AudioService {
       this.logger.error(`Failed to update status: ${error.message}`);
       throw error;
     }
+  }
+
+  // Convert Chinese table IDs to ASCII-safe format for Supabase Storage
+  // Common patterns: 包1 -> bao1, 外13 -> wai13, A1 -> A1
+  private toAsciiTableId(tableId: string): string {
+    const chineseMap: Record<string, string> = {
+      包: 'bao',
+      外: 'wai',
+      内: 'nei',
+      大: 'da',
+      小: 'xiao',
+      厅: 'ting',
+      雅: 'ya',
+      间: 'jian',
+      桌: 'zhuo',
+      台: 'tai',
+      号: 'hao',
+      楼: 'lou',
+      层: 'ceng',
+      区: 'qu',
+      座: 'zuo',
+    };
+
+    let result = tableId;
+    for (const [chinese, pinyin] of Object.entries(chineseMap)) {
+      result = result.replace(new RegExp(chinese, 'g'), pinyin);
+    }
+
+    // If still contains non-ASCII, fallback to hex encoding
+    if (!/^[\x00-\x7F]*$/.test(result)) {
+      result = Buffer.from(tableId, 'utf8').toString('hex');
+    }
+
+    return result;
   }
 }
