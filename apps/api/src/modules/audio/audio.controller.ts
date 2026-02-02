@@ -1,5 +1,5 @@
 // Audio Controller - API endpoints for recording
-// v3.5 - Added multer config for larger file uploads, better error handling
+// v3.6 - Handle duplicate processing requests as warning instead of error
 
 import {
   Controller,
@@ -14,6 +14,7 @@ import {
   UseInterceptors,
   Logger,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -93,25 +94,34 @@ export class AudioController {
     this.logger.log(`  Recording: ${recordingId} | Table: ${tableId}`);
     this.logger.log(`  Audio URL: ${audioUrl}`);
 
-    const result = await this.aiProcessingService.processAudio(
-      recordingId,
-      audioUrl,
-      tableId,
-      restaurantId,
-    );
+    try {
+      const result = await this.aiProcessingService.processAudio(
+        recordingId,
+        audioUrl,
+        tableId,
+        restaurantId,
+      );
 
-    this.logger.log(`◀ Process complete: score=${result.sentimentScore}, feedbacks=${result.feedbacks.length}`);
+      this.logger.log(`◀ Process complete: score=${result.sentimentScore}, feedbacks=${result.feedbacks.length}`);
 
-    return {
-      success: true,
-      transcript: result.transcript,
-      correctedTranscript: result.correctedTranscript,
-      aiSummary: result.aiSummary,
-      sentimentScore: result.sentimentScore,
-      feedbacks: result.feedbacks,
-      managerQuestions: result.managerQuestions,
-      customerAnswers: result.customerAnswers,
-    };
+      return {
+        success: true,
+        transcript: result.transcript,
+        correctedTranscript: result.correctedTranscript,
+        aiSummary: result.aiSummary,
+        sentimentScore: result.sentimentScore,
+        feedbacks: result.feedbacks,
+        managerQuestions: result.managerQuestions,
+        customerAnswers: result.customerAnswers,
+      };
+    } catch (error) {
+      // Handle duplicate processing as warning (409 Conflict), not error
+      if (error instanceof Error && error.message.includes('already')) {
+        this.logger.warn(`◀ Duplicate request: ${error.message}`);
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
   }
 
   // GET /api/audio/status/:visit_id

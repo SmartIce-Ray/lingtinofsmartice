@@ -1,5 +1,5 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v3.7 - Simplified logging output for cleaner console
+// v3.8 - Handle empty STT transcripts gracefully
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -73,11 +73,32 @@ export class AiProcessingService {
       const rawTranscript = await this.transcribeAudio(audioUrl);
       this.logger.log(`STT完成: ${rawTranscript.length}字`);
 
-      // Step 2: Correction + Tagging (Gemini) - No dish name dictionary needed
+      // Step 2: Handle empty transcript - skip AI processing
+      if (!rawTranscript || rawTranscript.trim().length === 0) {
+        this.logger.warn(`空音频或无法识别，跳过AI处理`);
+        const emptyResult = {
+          correctedTranscript: '',
+          aiSummary: '无法识别语音内容',
+          sentimentScore: 0.5,
+          feedbacks: [],
+          managerQuestions: [],
+          customerAnswers: [],
+        };
+        await this.saveResults(recordingId, {
+          rawTranscript: '',
+          ...emptyResult,
+        });
+        return {
+          transcript: '',
+          ...emptyResult,
+        };
+      }
+
+      // Step 3: Correction + Tagging (Gemini) - No dish name dictionary needed
       const aiResult = await this.processWithGemini(rawTranscript);
       this.logger.log(`AI完成: ${aiResult.aiSummary}`);
 
-      // Step 3: Save results to database
+      // Step 4: Save results to database
       await this.saveResults(recordingId, {
         rawTranscript,
         ...aiResult,

@@ -1,5 +1,5 @@
 // Fetch with Retry - Network resilience for cross-border connections
-// v1.1 - Added logging for retry attempts to help debug network issues
+// v1.2 - Use WARN for retry attempts, ERROR only for final failure
 
 interface RetryOptions {
   maxRetries?: number;
@@ -9,16 +9,21 @@ interface RetryOptions {
 }
 
 const DEFAULT_OPTIONS: Required<RetryOptions> = {
-  maxRetries: 3,
+  maxRetries: 9,  // 10 total attempts (1 initial + 9 retries)
   baseDelayMs: 1000,
   maxDelayMs: 10000,
   retryOn: (response) => response.status >= 500,
 };
 
-// Simple logger that works in both browser and Node.js
-function logRetry(message: string): void {
+// Log levels: WARN for retries, ERROR for final failure
+function logWarn(message: string): void {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [FetchRetry] ${message}`);
+  console.warn(`[${timestamp}] [FetchRetry] WARN: ${message}`);
+}
+
+function logError(message: string): void {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [FetchRetry] ERROR: ${message}`);
 }
 
 /**
@@ -42,13 +47,13 @@ export async function fetchWithRetry(
       // Check if we should retry based on response
       if (!response.ok && opts.retryOn(response) && attempt < opts.maxRetries) {
         const delay = Math.min(opts.baseDelayMs * Math.pow(2, attempt), opts.maxDelayMs);
-        logRetry(`Attempt ${attempt + 1}/${opts.maxRetries + 1} failed (HTTP ${response.status}), retrying in ${delay}ms: ${shortUrl}`);
+        logWarn(`Attempt ${attempt + 1}/${opts.maxRetries + 1} failed (HTTP ${response.status}), retrying in ${delay}ms: ${shortUrl}`);
         await sleep(delay);
         continue;
       }
 
       if (attempt > 0) {
-        logRetry(`Success after ${attempt + 1} attempts: ${shortUrl}`);
+        logWarn(`Success after ${attempt + 1} attempts: ${shortUrl}`);
       }
       return response;
     } catch (error) {
@@ -56,14 +61,14 @@ export async function fetchWithRetry(
 
       // Don't retry on last attempt
       if (attempt >= opts.maxRetries) {
-        logRetry(`All ${opts.maxRetries + 1} attempts failed: ${shortUrl} - ${lastError.message}`);
+        logError(`All ${opts.maxRetries + 1} attempts failed: ${shortUrl} - ${lastError.message}`);
         break;
       }
 
       // Exponential backoff with jitter
       const delay = Math.min(opts.baseDelayMs * Math.pow(2, attempt), opts.maxDelayMs);
       const jitter = Math.random() * 200;
-      logRetry(`Attempt ${attempt + 1}/${opts.maxRetries + 1} failed (${lastError.message}), retrying in ${Math.round(delay + jitter)}ms: ${shortUrl}`);
+      logWarn(`Attempt ${attempt + 1}/${opts.maxRetries + 1} failed (${lastError.message}), retrying in ${Math.round(delay + jitter)}ms: ${shortUrl}`);
       await sleep(delay + jitter);
     }
   }

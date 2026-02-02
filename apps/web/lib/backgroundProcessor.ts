@@ -1,5 +1,5 @@
 // Background Processor - Handles async upload and AI pipeline
-// v2.1 - Added: NOTE for TUS resumable upload upgrade path
+// v2.2 - Fixed: Don't mark already-processed recordings as error
 //
 // NOTE: Current architecture uploads via backend proxy (frontend → backend → Supabase).
 // If upload reliability becomes a problem, consider switching to frontend direct upload
@@ -280,6 +280,18 @@ export async function processRecordingInBackground(
       message = error.message;
     }
     logError(`Pipeline failed for ${id}`, error);
+
+    // Check if the error indicates the recording was already processed
+    // In this case, treat it as success, not error
+    const isAlreadyProcessed = message.includes('already processed') ||
+                                message.includes('already processing') ||
+                                message.includes('Recording already');
+
+    if (isAlreadyProcessed) {
+      log(`Recording ${id} was already processed, treating as success`);
+      callbacks.onStatusChange(id, 'completed', {});
+      return;
+    }
 
     // Update database status to 'error' for recovery after page refresh
     try {
