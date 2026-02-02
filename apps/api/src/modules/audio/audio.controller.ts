@@ -140,11 +140,14 @@ export class AudioController {
     return { records };
   }
 
-  // GET /api/audio/today - Get today's recordings for a restaurant
+  // GET /api/audio/today - Get recordings for a restaurant (supports date param)
   @Get('today')
-  async getTodayRecordings(@Query('restaurant_id') restaurantId: string) {
-    this.logger.log(`▶ GET /audio/today?restaurant_id=${restaurantId}`);
-    const records = await this.audioService.getTodayRecordings(restaurantId);
+  async getTodayRecordings(
+    @Query('restaurant_id') restaurantId: string,
+    @Query('date') date?: string,
+  ) {
+    this.logger.log(`▶ GET /audio/today?restaurant_id=${restaurantId}&date=${date || 'today'}`);
+    const records = await this.audioService.getTodayRecordings(restaurantId, date);
     this.logger.log(`◀ Found ${records.length} recordings`);
     return { records };
   }

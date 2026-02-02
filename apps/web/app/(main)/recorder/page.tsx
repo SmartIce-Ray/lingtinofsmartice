@@ -1,5 +1,5 @@
 // Recorder Page - Store manager records table visits with database sync
-// v3.1 - Added stealth mode toggle button next to record button
+// v3.2 - Added date parameter support for viewing historical recordings
 
 'use client';
 
@@ -22,16 +22,14 @@ function formatDuration(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Get start of day timestamp for a date selection
-function getDateRange(selection: string): { start: number; end: number } {
+// Get date string in YYYY-MM-DD format for API
+function getDateString(selection: string): string | undefined {
+  if (selection === '今日') return undefined; // Use default (today)
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if (selection === '昨日') {
-    start.setDate(start.getDate() - 1);
+    now.setDate(now.getDate() - 1);
   }
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start: start.getTime(), end: end.getTime() };
+  return now.toISOString().split('T')[0];
 }
 
 export default function RecorderPage() {
@@ -55,20 +53,19 @@ export default function RecorderPage() {
   const { isRecording, duration, audioBlob, error, analyserData } = recorderState;
   const { startRecording, stopRecording, resetRecording } = recorderActions;
 
-  // Pass restaurantId to sync with database
+  // Pass restaurantId and date to sync with database
+  const dateParam = getDateString(selectedDate);
   const {
     recordings,
+    isLoading: recordingsLoading,
     saveRecording,
     updateRecording,
     deleteRecording,
     getRecordingsNeedingRetry,
-  } = useRecordingStore(restaurantId);
+  } = useRecordingStore(restaurantId, dateParam);
 
-  // Filter recordings by selected date
-  const filteredRecordings = useMemo(() => {
-    const { start, end } = getDateRange(selectedDate);
-    return recordings.filter(rec => rec.timestamp >= start && rec.timestamp < end);
-  }, [recordings, selectedDate]);
+  // No need to filter locally - recordings are already filtered by date from API
+  const filteredRecordings = recordings;
 
   // Show toast message - defined early so it can be used in useEffects
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {

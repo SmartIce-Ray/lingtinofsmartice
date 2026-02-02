@@ -1,5 +1,5 @@
 // Recording Store - Database as single source of truth
-// v2.6 - Fixed: Reset stuck 'uploading' status to 'saved' on page refresh for auto-retry
+// v2.7 - Added: Support date parameter for viewing historical recordings
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthHeaders } from '@/contexts/AuthContext';
@@ -147,14 +147,14 @@ function dbRecordToRecording(dbRecord: {
   };
 }
 
-export function useRecordingStore(restaurantId?: string) {
+export function useRecordingStore(restaurantId?: string, date?: string) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Supabase client ref for Realtime subscription
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Fetch today's recordings from database on mount
+  // Fetch recordings from database on mount or when date changes
   useEffect(() => {
     const fetchFromDatabase = async () => {
       if (!restaurantId) {
@@ -162,8 +162,10 @@ export function useRecordingStore(restaurantId?: string) {
         return;
       }
 
+      setIsLoading(true);
       try {
-        const response = await fetch(getApiUrl(`api/audio/today?restaurant_id=${restaurantId}`), {
+        const dateParam = date ? `&date=${date}` : '';
+        const response = await fetch(getApiUrl(`api/audio/today?restaurant_id=${restaurantId}${dateParam}`), {
           headers: getAuthHeaders(),
         });
 
@@ -171,26 +173,29 @@ export function useRecordingStore(restaurantId?: string) {
           const { records } = await response.json();
           const dbRecordings = records.map(dbRecordToRecording);
 
-          // Merge with local recordings (not yet uploaded)
-          const localRecs = getLocalRecordings();
-          const localNotUploaded = localRecs.filter(
-            r => r.status === 'saved' || r.status === 'uploading'
-          );
-
-          // Combine: local not-uploaded + database records
-          setRecordings([...localNotUploaded, ...dbRecordings]);
+          // Only merge local recordings for today (not historical views)
+          if (!date) {
+            const localRecs = getLocalRecordings();
+            const localNotUploaded = localRecs.filter(
+              r => r.status === 'saved' || r.status === 'uploading'
+            );
+            setRecordings([...localNotUploaded, ...dbRecordings]);
+          } else {
+            setRecordings(dbRecordings);
+          }
         }
       } catch (error) {
         console.error('[RecordingStore] Failed to fetch from database:', error);
-        // Fallback to local storage
-        setRecordings(getLocalRecordings());
+        if (!date) {
+          setRecordings(getLocalRecordings());
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchFromDatabase();
-  }, [restaurantId]);
+  }, [restaurantId, date]);
 
   // Subscribe to Supabase Realtime for live updates when records change
   useEffect(() => {
