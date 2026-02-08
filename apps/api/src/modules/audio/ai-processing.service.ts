@@ -1,5 +1,5 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v3.8 - Handle empty STT transcripts gracefully
+// v3.9 - 去掉Gemini纠偏步骤，方言大模型STT结果直接作为最终文本
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -94,8 +94,10 @@ export class AiProcessingService {
         };
       }
 
-      // Step 3: Correction + Tagging (Gemini) - No dish name dictionary needed
+      // Step 3: AI Tagging (Gemini) - 只做打标，不做纠偏
       const aiResult = await this.processWithGemini(rawTranscript);
+      // STT结果直接作为correctedTranscript（方言大模型已足够准确）
+      aiResult.correctedTranscript = rawTranscript;
       this.logger.log(`AI完成: ${aiResult.aiSummary}`);
 
       // Step 4: Save results to database
@@ -233,7 +235,6 @@ export class AiProcessingService {
 
 输出JSON格式（只输出JSON，无其他内容）：
 {
-  "correctedTranscript": "纠偏后的完整文本",
   "aiSummary": "20字以内摘要",
   "sentimentScore": 0.5,
   "feedbacks": [
@@ -245,17 +246,14 @@ export class AiProcessingService {
 }
 
 规则：
-1. correctedTranscript: 只修正明显的语音识别错误（如同音字错误），不要添加原文没有的内容
-   - 如果原文没有提到菜品，不要凭空添加菜品名称
-   - 保持原文的意思不变，只修正错别字
-2. sentimentScore: 0-1分，0=极差，0.5=中性，1=极好
-3. feedbacks: 提取顾客的评价短语，每个评价必须包含主语+评价词（如"清蒸鲈鱼很新鲜"而不是单独的"新鲜"）
+1. sentimentScore: 0-1分，0=极差，0.5=中性，1=极好
+2. feedbacks: 提取顾客的评价短语，每个评价必须包含主语+评价词（如"清蒸鲈鱼很新鲜"而不是单独的"新鲜"）
    - sentiment: positive（正面）/ negative（负面）/ neutral（中性）
    - 只提取有明确情绪倾向的评价，最多5个
    - 如果原文没有提到具体菜品，不要在feedbacks中添加菜品名称
-4. managerQuestions: 店长/服务员说的话（通常是问候或询问）
-5. customerAnswers: 顾客的回复内容
-6. 如果某项为空，返回空数组[]`;
+3. managerQuestions: 店长/服务员说的话（通常是问候或询问）
+4. customerAnswers: 顾客的回复内容
+5. 如果某项为空，返回空数组[]`;
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
@@ -305,7 +303,7 @@ export class AiProcessingService {
     const result = JSON.parse(jsonMatch[0]);
 
     return {
-      correctedTranscript: result.correctedTranscript || transcript,
+      correctedTranscript: '', // 由调用方设置为rawTranscript
       aiSummary: result.aiSummary || '无摘要',
       sentimentScore: parseFloat(result.sentimentScore) || 0.5,
       feedbacks: result.feedbacks || [],

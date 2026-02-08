@@ -1,5 +1,5 @@
 // 讯飞 Speech-to-Text Service - 方言识别大模型 (SLM)
-// v2.0 - 切换到方言大模型，支持202种方言自动识别（含四川话等）
+// v2.1 - 去掉wpgs流式模式，使用非流式获取最终结果，避免中间结果重复
 // API文档: https://www.xfyun.cn/doc/spark/spark_slm_iat.html
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -43,9 +43,6 @@ interface SlmResultText {
     bg: number;
     cw: Array<{ w: string; wp?: string }>;
   }>;
-  pgs?: string; // "rpl" (替换) 或 "apd" (追加)
-  rg?: [number, number]; // 替换范围
-  ls?: boolean; // 是否最后一个结果
 }
 
 @Injectable()
@@ -148,12 +145,11 @@ export class XunfeiSttService {
     return `${XUNFEI_WSS_URL}?${params.toString()}`;
   }
 
-  // 方言大模型WebSocket通信 + 响应解析
+  // 方言大模型WebSocket通信 + 响应解析（非流式，直接拼接最终结果）
   private sendAudioAndGetTranscript(wsUrl: string, appId: string, audioBuffer: Buffer): Promise<string> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
-      // wpgs流式模式：用句子数组管理替换和追加
-      const sentences: string[] = [];
+      const transcriptParts: string[] = [];
       let frameIndex = 0;
       const totalFrames = Math.ceil(audioBuffer.length / FRAME_SIZE);
       let isResolved = false;
@@ -161,14 +157,14 @@ export class XunfeiSttService {
       const resolveWithResults = (reason: string) => {
         if (isResolved) return;
         isResolved = true;
-        const finalTranscript = sentences.join('');
+        const finalTranscript = transcriptParts.join('');
         this.logger.log(`STT完成(${reason}): ${finalTranscript.length}字`);
         resolve(finalTranscript);
       };
 
       const timeout = setTimeout(() => {
         ws.close();
-        if (sentences.length > 0) {
+        if (transcriptParts.length > 0) {
           resolveWithResults('timeout-partial');
         } else {
           reject(new Error(`STT超时(${STT_TIMEOUT_MS / 1000}s)`));
@@ -191,23 +187,14 @@ export class XunfeiSttService {
             return;
           }
 
-          // 解析 base64 编码的识别结果
+          // 解析 base64 编码的识别结果，直接追加
           if (response.payload?.result?.text) {
             const decoded = Buffer.from(response.payload.result.text, 'base64').toString('utf-8');
             const result: SlmResultText = JSON.parse(decoded);
-
-            // 提取本次识别的文字
             const text = result.ws
               ?.map((w) => w.cw.map((c) => c.w).join(''))
               .join('') || '';
-
-            // wpgs流式处理：rpl=替换, apd=追加
-            if (result.pgs === 'rpl' && result.rg) {
-              const [start, end] = result.rg;
-              sentences.splice(start, end - start + 1, text);
-            } else {
-              sentences.push(text);
-            }
+            if (text) transcriptParts.push(text);
           }
 
           // status=2 表示识别结束
@@ -223,7 +210,7 @@ export class XunfeiSttService {
 
       ws.on('error', (error: Error) => {
         clearTimeout(timeout);
-        if (sentences.length > 0) {
+        if (transcriptParts.length > 0) {
           resolveWithResults('error-partial');
         } else {
           reject(new Error(`WebSocket错误: ${error.message}`));
@@ -232,7 +219,7 @@ export class XunfeiSttService {
 
       ws.on('close', () => {
         clearTimeout(timeout);
-        if (!isResolved && sentences.length > 0) {
+        if (!isResolved && transcriptParts.length > 0) {
           resolveWithResults('closed');
         }
       });
@@ -282,8 +269,7 @@ export class XunfeiSttService {
             language: 'zh_cn',
             accent: 'mulacc',   // 多方言自动识别(202种方言)
             domain: 'slm',      // 方言大模型
-            eos: 3000,          // 静音检测(ms)
-            dwa: 'wpgs',        // 流式结果
+            eos: 10000,         // 静音检测(ms)，最大值防止对话停顿被截断
             ptt: 1,             // 开启标点
             nunum: 1,           // 数字规整
             result: {
