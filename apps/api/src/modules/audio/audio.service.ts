@@ -1,5 +1,5 @@
 // Audio Service - Business logic for recording processing
-// v3.0 - Use correct file extension from MIME type (mp4 for mobile Safari)
+// v3.1 - Pass duration_seconds to DB, include in today query response
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -17,6 +17,7 @@ export class AudioService {
     restaurantId: string,
     employeeId?: string,
     recordingId?: string,
+    durationSeconds?: number,
   ) {
     this.logger.log(`Uploading audio for table ${tableId}, recording ${recordingId}`);
 
@@ -74,6 +75,7 @@ export class AudioService {
       employee_id: employeeId,
       table_id: tableId,
       audio_url: urlData.publicUrl,
+      duration_seconds: durationSeconds,
       visit_period: visitPeriod,
     });
 
@@ -162,7 +164,7 @@ export class AudioService {
 
     const { data, error } = await client
       .from('lingtin_visit_records')
-      .select('id, table_id, status, ai_summary, sentiment_score, audio_url, corrected_transcript, created_at')
+      .select('id, table_id, status, ai_summary, sentiment_score, audio_url, corrected_transcript, duration_seconds, created_at')
       .eq('restaurant_id', restaurantId)
       .eq('visit_date', targetDate)
       .order('created_at', { ascending: false });

@@ -1,5 +1,5 @@
 // Recording Store - Database as single source of truth
-// v2.7 - Added: Support date parameter for viewing historical recordings
+// v2.8 - Map duration_seconds from DB response to recording duration
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthHeaders } from '@/contexts/AuthContext';
@@ -132,12 +132,13 @@ function dbRecordToRecording(dbRecord: {
   sentiment_score?: number;
   audio_url?: string;
   corrected_transcript?: string;
+  duration_seconds?: number;
   created_at: string;
 }): Recording {
   return {
     id: dbRecord.id,
     tableId: dbRecord.table_id,
-    duration: 0,
+    duration: dbRecord.duration_seconds || 0,
     timestamp: new Date(dbRecord.created_at).getTime(),
     status: dbRecord.status === 'processed' ? 'completed' : dbRecord.status as RecordingStatus,
     aiSummary: dbRecord.ai_summary,

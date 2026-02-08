@@ -1,5 +1,5 @@
 // Audio Controller - API endpoints for recording
-// v3.6 - Handle duplicate processing requests as warning instead of error
+// v3.7 - Accept duration_seconds from upload FormData
 
 import {
   Controller,
@@ -47,6 +47,7 @@ export class AudioController {
     @Body('restaurant_id') restaurantId: string,
     @Body('recording_id') recordingId?: string,
     @Body('employee_id') employeeId?: string,
+    @Body('duration_seconds') durationSeconds?: string,
   ) {
     this.logger.log(`▶ POST /audio/upload`);
     this.logger.log(`  Table: ${tableId} | Recording: ${recordingId}`);
@@ -76,6 +77,7 @@ export class AudioController {
       restaurantId,
       employeeId,
       recordingId,
+      durationSeconds ? parseInt(durationSeconds, 10) : undefined,
     );
 
     this.logger.log(`◀ Upload complete: ${result.audioUrl}`);

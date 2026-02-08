@@ -1,5 +1,5 @@
 // Background Processor - Handles async upload and AI pipeline
-// v2.3 - Increased upload timeout to 60s for mobile, use correct file extension per MIME type
+// v2.4 - Send duration_seconds in upload FormData for database persistence
 //
 // NOTE: Current architecture uploads via backend proxy (frontend → backend → Supabase).
 // If upload reliability becomes a problem, consider switching to frontend direct upload
@@ -112,7 +112,7 @@ export async function processRecordingInBackground(
   callbacks: ProcessingCallbacks,
   restaurantId?: string
 ) {
-  const { id, tableId, audioData, audioUrl: existingAudioUrl } = recording;
+  const { id, tableId, duration, audioData, audioUrl: existingAudioUrl } = recording;
   const startTime = Date.now();
   const authHeaders = getAuthHeaders();
 
@@ -161,6 +161,9 @@ export async function processRecordingInBackground(
       formData.append('recording_id', id);
       if (restaurantId) {
         formData.append('restaurant_id', restaurantId);
+      }
+      if (duration > 0) {
+        formData.append('duration_seconds', String(Math.round(duration)));
       }
 
       const uploadStartTime = Date.now();
