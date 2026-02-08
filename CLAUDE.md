@@ -9,8 +9,15 @@
 - **前端**: Next.js + PWA
 - **后端**: Node.js (NestJS)
 - **数据库**: Supabase (PostgreSQL)
-- **AI**: 讯飞STT + Claude SDK
+- **AI**: 讯飞STT(方言大模型) + Claude SDK
 - **存储**: Supabase Storage
+
+## 外部服务文档
+
+| 服务 | 文档链接 | 说明 |
+|------|----------|------|
+| 讯飞方言大模型 | https://www.xfyun.cn/doc/spark/spark_slm_iat.html | STT语音识别，支持202种方言自动识别 |
+| 讯飞开放平台控制台 | https://console.xfyun.cn/ | API密钥管理、服务开通 |
 
 ## 部署信息
 
