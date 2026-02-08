@@ -1,53 +1,75 @@
 // Update Prompt Component - Detects SW updates and prompts user to refresh
-// v1.0 - Initial implementation with version display
+// v2.0 - Added force cache clear for Safari, proactive SW update check, long-press force update
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 // Build version - updated on each deployment
-export const APP_VERSION = '1.0.1';
-export const BUILD_DATE = '2026-01-31';
+export const APP_VERSION = '1.0.2';
+export const BUILD_DATE = '2026-02-09';
+
+// Force clear all caches, unregister SW, and hard reload
+async function forceUpdateApp() {
+  console.log('[Lingtin] Force updating app...');
+  try {
+    // 1. Unregister all service workers
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+      console.log(`[Lingtin] Unregistered ${registrations.length} service worker(s)`);
+    }
+    // 2. Clear all caches (Workbox runtime caches, precache, etc.)
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(name => caches.delete(name)));
+      console.log(`[Lingtin] Cleared ${cacheNames.length} cache(s): ${cacheNames.join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[Lingtin] Error during force update:', err);
+  }
+  // 3. Hard reload (bypass browser cache)
+  window.location.reload();
+}
 
 export function UpdatePrompt() {
   const [showUpdate, setShowUpdate] = useState(false);
   const [showVersion, setShowVersion] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  // Long-press on version badge triggers force update
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
       return;
     }
 
-    // Listen for new service worker taking control
     const handleControllerChange = () => {
-      // New SW has taken control, prompt user to refresh
       setShowUpdate(true);
     };
 
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
-    // Also check for waiting service worker on load
     navigator.serviceWorker.ready.then((registration) => {
-      // Check if there's a waiting worker
       if (registration.waiting) {
         setShowUpdate(true);
       }
 
-      // Listen for new updates
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New content is available, prompt user
               setShowUpdate(true);
             }
           });
         }
       });
+
+      // Proactively check for SW updates on page load (Safari may not do this automatically)
+      registration.update().catch(() => {});
     });
 
-    // Log version on mount
     console.log(`[Lingtin] Version: ${APP_VERSION} (${BUILD_DATE})`);
 
     return () => {
@@ -55,17 +77,34 @@ export function UpdatePrompt() {
     };
   }, []);
 
-  const handleRefresh = () => {
-    // Force reload to get new version
-    window.location.reload();
-  };
+  const handleRefresh = useCallback(async () => {
+    setUpdating(true);
+    await forceUpdateApp();
+  }, []);
 
   const handleDismiss = () => {
     setShowUpdate(false);
   };
 
   const toggleVersion = () => {
-    setShowVersion(!showVersion);
+    setShowVersion(prev => !prev);
+  };
+
+  // Long-press (1.5s) on version badge = force update (debug shortcut)
+  const handleVersionTouchStart = () => {
+    longPressTimer.current = setTimeout(async () => {
+      if (confirm('强制清除缓存并更新？')) {
+        setUpdating(true);
+        await forceUpdateApp();
+      }
+    }, 1500);
+  };
+
+  const handleVersionTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   };
 
   return (
@@ -83,9 +122,10 @@ export function UpdatePrompt() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRefresh}
-                className="px-3 py-1 bg-white text-blue-600 rounded-full text-sm font-medium hover:bg-blue-50 transition-colors"
+                disabled={updating}
+                className="px-3 py-1 bg-white text-blue-600 rounded-full text-sm font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
               >
-                刷新
+                {updating ? '更新中...' : '刷新'}
               </button>
               <button
                 onClick={handleDismiss}
@@ -101,10 +141,15 @@ export function UpdatePrompt() {
         </div>
       )}
 
-      {/* Version indicator - tap to show full version */}
+      {/* Version indicator - tap to toggle, long-press to force update */}
       <button
         onClick={toggleVersion}
-        className="fixed bottom-20 right-2 z-40 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+        onTouchStart={handleVersionTouchStart}
+        onTouchEnd={handleVersionTouchEnd}
+        onMouseDown={handleVersionTouchStart}
+        onMouseUp={handleVersionTouchEnd}
+        onMouseLeave={handleVersionTouchEnd}
+        className="fixed bottom-20 right-2 z-40 text-[10px] text-gray-400 hover:text-gray-600 transition-colors select-none"
         aria-label="显示版本信息"
       >
         {showVersion ? `v${APP_VERSION} (${BUILD_DATE})` : `v${APP_VERSION}`}

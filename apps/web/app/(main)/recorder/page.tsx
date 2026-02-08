@@ -13,6 +13,7 @@ import { RecordButton } from '@/components/recorder/RecordButton';
 import { RecordingHistory } from '@/components/recorder/RecordingHistory';
 import { StealthOverlay } from '@/components/recorder/StealthOverlay';
 import { UserMenu } from '@/components/layout/UserMenu';
+import { APP_VERSION } from '@/components/layout/UpdatePrompt';
 import { processRecordingInBackground, retryPendingFromDatabase } from '@/lib/backgroundProcessor';
 
 // Format seconds to MM:SS
@@ -247,7 +248,10 @@ export default function RecorderPage() {
 
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">桌访录音</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold text-gray-900">桌访录音</h1>
+          <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">v{APP_VERSION}</span>
+        </div>
         <div className="flex items-center gap-3">
           {/* Date Tabs */}
           <div className="flex bg-gray-100 rounded-lg p-0.5">
