@@ -1,5 +1,5 @@
 // SWR Provider - Global data fetching configuration with localStorage persistence
-// v1.2 - Changed: Direct backend API calls (removed Next.js proxy layer)
+// v1.3 - Added: Auto-logout on 401 (expired token) for all API calls
 
 'use client';
 
@@ -50,11 +50,21 @@ function createLocalStorageProvider(): SWRCache {
   return map as SWRCache;
 }
 
-// Auth token key (must match AuthContext.tsx)
+// Auth keys (must match AuthContext.tsx)
 const AUTH_TOKEN_KEY = 'lingtin_auth_token';
+const AUTH_USER_KEY = 'lingtin_auth_user';
+
+// Handle 401: clear stored credentials and redirect to login
+function handleAuthExpired() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+  localStorage.removeItem(CACHE_KEY);
+  window.location.href = '/login';
+}
 
 // Global fetcher function with auth headers
 // Converts relative URLs to full backend API URLs
+// Auto-redirects to login on 401 (expired token)
 export async function fetcher<T>(url: string): Promise<T> {
   const token = typeof window !== 'undefined'
     ? localStorage.getItem(AUTH_TOKEN_KEY)
@@ -73,6 +83,10 @@ export async function fetcher<T>(url: string): Promise<T> {
   const res = await fetch(fullUrl, { headers });
 
   if (!res.ok) {
+    // Token expired or invalid - auto logout and redirect to login
+    if (res.status === 401) {
+      handleAuthExpired();
+    }
     const error = new Error('API request failed');
     (error as Error & { status: number }).status = res.status;
     throw error;
