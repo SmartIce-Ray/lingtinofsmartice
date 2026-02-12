@@ -1,5 +1,5 @@
 // Table Selector Component - Select table by letter + number
-// v1.5 - Updated: expanded numbers to 1-20
+// v1.6 - Updated: added '圆' (round table) and '卡' (booth) to letter options
 
 'use client';
 
@@ -11,7 +11,7 @@ interface TableSelectorProps {
   disabled?: boolean;
 }
 
-const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', '外', '包'];
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', '外', '包', '圆', '卡'];
 const NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
 export function TableSelector({ value, onChange, disabled = false }: TableSelectorProps) {
