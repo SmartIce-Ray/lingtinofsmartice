@@ -1,5 +1,5 @@
 // Table Selector Component - Select table by letter + number
-// v1.3 - Updated: reduced letters to A-H, numbers to 1-8, added '包' for private rooms
+// v1.4 - Updated: expanded numbers to 1-10
 
 'use client';
 
@@ -12,7 +12,7 @@ interface TableSelectorProps {
 }
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', '外', '包'];
-const NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
+const NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export function TableSelector({ value, onChange, disabled = false }: TableSelectorProps) {
   const [selectedLetter, setSelectedLetter] = useState<string>('');
