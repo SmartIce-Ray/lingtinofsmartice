@@ -5,7 +5,7 @@
 // v2.2 - Fixed: Popover positioning now has consistent 16px margins on both sides
 // v2.1 - Added: SWR for stale-while-revalidate caching
 //        Clickable feedback bubbles with conversation popover
-//        Hidden: Dish ranking section (marked out per user request)
+//        Restored: Dish ranking TOP 5 section
 
 'use client';
 
@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
+import { ActionItemsCard } from '@/components/dashboard/ActionItemsCard';
 
 // Types for API responses
 interface CoveragePeriod {
@@ -56,6 +57,18 @@ interface ManagerQuestion {
   text: string;
   table: string;
   time: string;
+}
+
+interface DishRanking {
+  dish_name: string;
+  mention_count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+interface DishRankingResponse {
+  dishes: DishRanking[];
 }
 
 // Calculate date based on selection (using local timezone)
@@ -111,12 +124,16 @@ export default function DashboardPage() {
   const { data: highlightsData, isLoading: highlightsLoading } = useSWR<HighlightsResponse>(
     params ? `/api/dashboard/speech-highlights?${params}` : null
   );
+  const { data: dishData, isLoading: dishLoading } = useSWR<DishRankingResponse>(
+    params ? `/api/dashboard/dish-ranking?${params}` : null
+  );
 
   // Derived data with defaults
   const coverage = coverageData ?? { periods: [] };
   const sentiment = sentimentData ?? null;
   const managerQuestions = highlightsData?.questions ?? [];
-  const loading = coverageLoading || sentimentLoading || highlightsLoading;
+  const dishes = dishData?.dishes ?? [];
+  const loading = coverageLoading || sentimentLoading || highlightsLoading || dishLoading;
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -316,6 +333,57 @@ export default function DashboardPage() {
           ) : null}
         </div>
 
+        {/* Dish Ranking TOP 5 */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <h2 className="text-sm font-medium text-gray-700 mb-3">菜品提及 TOP 5</h2>
+          {dishes.length > 0 ? (
+            <div className="space-y-3">
+              {dishes.map((dish, i) => {
+                const maxCount = dishes[0]?.mention_count || 1;
+                const barWidth = (dish.mention_count / maxCount) * 100;
+                return (
+                  <div key={dish.dish_name} className="flex items-center gap-3">
+                    <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold ${
+                      i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                      i === 1 ? 'bg-gray-100 text-gray-600' :
+                      i === 2 ? 'bg-orange-50 text-orange-600' :
+                      'bg-gray-50 text-gray-400'
+                    }`}>
+                      {i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-800 truncate">{dish.dish_name}</span>
+                        <span className="text-xs text-gray-400 ml-2 shrink-0">{dish.mention_count}次</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-400 rounded-full transition-all duration-500"
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        {dish.positive > 0 && (
+                          <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+                            好评 {dish.positive}
+                          </span>
+                        )}
+                        {dish.negative > 0 && (
+                          <span className="text-xs text-red-500 bg-red-50 px-1.5 py-0.5 rounded">
+                            差评 {dish.negative}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : !loading ? (
+            <div className="text-center py-4 text-gray-400">暂无数据</div>
+          ) : null}
+        </div>
+
         {/* Manager Questions - 话术使用 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
@@ -358,6 +426,11 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+
+        {/* AI Action Items */}
+        {restaurantId && (
+          <ActionItemsCard restaurantId={restaurantId} date={date} />
+        )}
       </main>
 
       {/* Feedback Conversation Popover */}

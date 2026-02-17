@@ -27,7 +27,7 @@ export class SupabaseService {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('your-')) {
+    if (process.env.MOCK_MODE === 'true' || !supabaseUrl || !supabaseKey || supabaseUrl.includes('your-')) {
       this.logger.warn('Supabase not configured - running in MOCK MODE');
       this.mockMode = true;
     } else {

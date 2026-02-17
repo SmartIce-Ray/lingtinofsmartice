@@ -39,5 +39,8 @@ public/workbox-*.js
 # Supabase
 supabase/.temp/
 
+# Claude Code local config
+.claude.local.md
+
 # MCP config (contains project refs)
 .mcp.json

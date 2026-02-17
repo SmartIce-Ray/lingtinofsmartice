@@ -7,6 +7,7 @@ import { AudioModule } from './modules/audio/audio.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { StaffModule } from './modules/staff/staff.module';
+import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { AuthModule, JwtAuthGuard } from './modules/auth';
 import { SupabaseModule } from './common/supabase/supabase.module';
 
@@ -18,6 +19,7 @@ import { SupabaseModule } from './common/supabase/supabase.module';
     DashboardModule,
     ChatModule,
     StaffModule,
+    ActionItemsModule,
   ],
   providers: [
     // Apply JWT guard globally - all routes require auth by default

@@ -26,6 +26,9 @@ export class DashboardService {
 
   // Get all active restaurants (for administrator multi-store view)
   async getRestaurantList() {
+    if (this.supabase.isMockMode()) {
+      return { restaurants: [{ id: 'mock-rest-1', restaurant_name: '测试店铺' }] };
+    }
     const client = this.supabase.getClient();
 
     const { data, error } = await client
@@ -42,6 +45,15 @@ export class DashboardService {
   // Get coverage statistics (visits vs table sessions)
   // Supports restaurant_id=all for multi-store summary
   async getCoverageStats(restaurantId: string, date: string) {
+    if (this.supabase.isMockMode()) {
+      return {
+        periods: [
+          { period: 'lunch', open_count: 12, visit_count: 10, coverage: 83, status: 'warning' },
+          { period: 'dinner', open_count: 15, visit_count: 14, coverage: 93, status: 'good' },
+        ],
+      };
+    }
+
     const client = this.supabase.getClient();
 
     // Multi-restaurant mode: return per-restaurant breakdown with summary
@@ -170,6 +182,17 @@ export class DashboardService {
 
   // Get top mentioned dishes with sentiment
   async getDishRanking(restaurantId: string, date: string, limit: number) {
+    if (this.supabase.isMockMode()) {
+      return {
+        dishes: [
+          { dish_name: '清蒸鲈鱼', mention_count: 8, positive: 6, negative: 1, neutral: 1 },
+          { dish_name: '红烧肉', mention_count: 6, positive: 4, negative: 2, neutral: 0 },
+          { dish_name: '宫保鸡丁', mention_count: 5, positive: 5, negative: 0, neutral: 0 },
+          { dish_name: '麻婆豆腐', mention_count: 4, positive: 2, negative: 1, neutral: 1 },
+          { dish_name: '糖醋排骨', mention_count: 3, positive: 1, negative: 2, neutral: 0 },
+        ].slice(0, limit),
+      };
+    }
     const client = this.supabase.getClient();
 
     // Get all dish mentions for the date
@@ -262,6 +285,22 @@ export class DashboardService {
   // v1.7 - Added: Include conversation context for each feedback (for popover display)
   // v1.9 - Added: Support restaurant_id=all for multi-store aggregation
   async getSentimentSummary(restaurantId: string, date: string) {
+    if (this.supabase.isMockMode()) {
+      return {
+        positive_count: 12, neutral_count: 5, negative_count: 3,
+        positive_percent: 60, neutral_percent: 25, negative_percent: 15,
+        total_feedbacks: 20,
+        positive_feedbacks: [
+          { text: '味道很好', count: 4, contexts: [] },
+          { text: '服务热情', count: 3, contexts: [] },
+          { text: '环境不错', count: 2, contexts: [] },
+        ],
+        negative_feedbacks: [
+          { text: '上菜慢', count: 2, contexts: [] },
+          { text: '偏咸', count: 1, contexts: [] },
+        ],
+      };
+    }
     const client = this.supabase.getClient();
 
     // Build query - either for single restaurant or all restaurants
@@ -459,6 +498,15 @@ export class DashboardService {
 
   // Get manager questions used today (simple list)
   async getSpeechHighlights(restaurantId: string, date: string) {
+    if (this.supabase.isMockMode()) {
+      return {
+        questions: [
+          { text: '今天的菜品口味还满意吗？', table: 'A3', time: '12:15' },
+          { text: '请问是第几次来我们店？', table: 'B1', time: '12:30' },
+          { text: '有什么需要改进的地方吗？', table: 'A5', time: '18:45' },
+        ],
+      };
+    }
     const client = this.supabase.getClient();
 
     // Get all records with manager questions

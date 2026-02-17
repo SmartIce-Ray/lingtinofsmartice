@@ -1,16 +1,94 @@
-# Lingtin - 智能桌访系统
+# Lingtin - 语音智能管理平台
 
-## 项目概述
+## 产品定位
 
-餐饮行业智能桌访管理系统，实现"店长零操作录音 + 老板自由问答"的核心体验。
+餐饮行业语音智能管理平台，以消费者反馈驱动管理闭环：**说了 → 记了 → 做了 → 验了**。当前阶段聚焦**店长单店闭环**（桌访录音 + AI 分析 + 行动建议）。
+
+> 完整产品定义见 [docs/PRD.md](docs/PRD.md)，开发规范见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
 ## 技术栈
 
-- **前端**: Next.js + PWA
-- **后端**: Node.js (NestJS)
+- **前端**: Next.js 14 + PWA + Tailwind CSS + SWR
+- **后端**: NestJS (Node.js)
 - **数据库**: Supabase (PostgreSQL)
-- **AI**: 讯飞STT(方言大模型) + Claude SDK
+- **AI**: 讯飞 STT (方言大模型) + Gemini / Claude SDK
 - **存储**: Supabase Storage
+- **认证**: Supabase Auth + JWT
+
+## 项目结构
+
+```
+lingtin/
+├── apps/
+│   ├── web/                          # Next.js 前端 (@lingtin/web)
+│   │   ├── app/
+│   │   │   ├── (main)/              # 店长端
+│   │   │   │   ├── recorder/        # 桌访录音页
+│   │   │   │   ├── dashboard/       # 数据看板页
+│   │   │   │   └── chat/            # AI 智库页
+│   │   │   ├── admin/               # 管理端
+│   │   │   │   ├── dashboard/
+│   │   │   │   ├── chat/
+│   │   │   │   ├── restaurant-detail/
+│   │   │   │   └── staff-questions/
+│   │   │   └── login/
+│   │   ├── components/              # UI 组件 (recorder/, chat/, layout/)
+│   │   ├── hooks/                   # useAudioRecorder, useRecordingStore, useChatStream
+│   │   ├── contexts/                # AuthContext, SWRProvider
+│   │   └── lib/                     # api.ts, backgroundProcessor.ts, supabase/
+│   │
+│   └── api/                          # NestJS 后端 (@lingtin/api)
+│       └── src/
+│           ├── modules/
+│           │   ├── audio/           # 音频上传 + STT + AI 分析 Pipeline
+│           │   ├── auth/            # JWT 认证
+│           │   ├── chat/            # AI 对话 (Text-to-SQL)
+│           │   ├── dashboard/       # 看板数据聚合
+│           │   └── staff/           # 员工 + 问卷管理
+│           └── common/              # Supabase 客户端, 工具函数
+│
+├── packages/                         # 共享包
+├── docs/                             # 产品 & 开发文档
+│   ├── PRD.md                       # 全景产品需求文档
+│   ├── DEVELOPMENT.md               # 开发规范
+│   └── archive/                     # 归档文档 (plan-mvp-v1.md 等)
+├── Dockerfile                        # 后端容器构建
+└── pnpm-workspace.yaml               # Monorepo 配置
+```
+
+## 常用命令
+
+```bash
+pnpm dev              # 同时启动前端 + 后端
+pnpm dev:web          # 仅前端 (localhost:3000)
+pnpm dev:api          # 仅后端 (localhost:3001)
+pnpm build:web        # 构建前端
+pnpm build:api        # 构建后端
+
+# 本地 Supabase (需要 Docker Desktop)
+supabase start        # 启动本地 Supabase (localhost:54321)
+supabase stop         # 停止本地 Supabase
+supabase status       # 查看本地服务状态和密钥
+```
+
+## 开发规范摘要
+
+- **迭代开发，不是重构** — 在现有代码基础上渐进增强，不做大规模重写
+- **TypeScript strict mode**，避免 `any`
+- **文件名** kebab-case，**组件名** PascalCase
+- **NestJS 模块**：module + controller + service 三件套
+- **数据库表** `lingtin_` 前缀，UUID 主键，TIMESTAMPTZ 时间，启用 RLS
+- **Git commit**：`feat|fix|docs|refactor(scope): description`
+- **API 响应**：统一 `{ data, message }` 格式
+
+> 详见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+
+## 协作工作流
+
+- **本地开发**: `supabase start` + `pnpm dev` → 本地测试
+- **数据库变更**: SQL 迁移文件放 `supabase/migrations/`，由 Jeremy 在线上 Supabase 执行
+- **发布流程**: 本地测试通过 → push/PR 给 Jeremy → Jeremy 负责线上部署
+- **不要直接操作线上 Supabase 数据库**
 
 ## 外部服务文档
 
@@ -36,7 +114,7 @@
 - **区域**: 阿里云中国区 (aliyun-zeabur.cn)
 - **根目录**: `/apps/api`
 - **框架**: NestJS + pnpm
-- **自动HTTPS**: ✅ Zeabur 自动提供
+- **自动HTTPS**: Zeabur 自动提供
 - **API 地址**: `https://lingtinapi.preview.aliyun-zeabur.cn/api`
 - **内部DNS**: `lingtinofsmartice.zeabur.internal`
 
@@ -142,7 +220,7 @@ audio_url TEXT                  -- 音频文件URL
 raw_transcript TEXT             -- 讯飞STT原始转写
 corrected_transcript TEXT       -- 纠偏后文本
 
--- AI自动打标 (MVP v3.0 简化版 - 5维度)
+-- AI自动打标 (5维度)
 sentiment_score DECIMAL(3,2)    -- 情绪分：0.00 到 1.00 (0=极差, 0.5=中性, 1=极好)
 ai_summary TEXT                 -- AI简要总结 (20字以内)
 keywords JSONB                  -- 关键词数组 (菜名、形容词、服务词等)
@@ -161,6 +239,8 @@ visit_date DATE
 visit_period VARCHAR(10)        -- lunch/dinner
 status VARCHAR(20)              -- pending/processing/completed/failed
 ```
+
+<!-- 扩展方向：新增 scene_type 字段以区分桌访/例会/巡检等场景 -->
 
 #### lingtin_dish_mentions (菜品提及表)
 
@@ -202,6 +282,8 @@ master_restaurant (1)
     │       │
     │       └──< lingtin_dish_mentions (N)
     │
+    ├──< lingtin_action_items (N)
+    │
     └──< lingtin_table_sessions (N)
 
 master_employee (1)
@@ -212,6 +294,25 @@ lingtin_dishname_view
     │
     └── (语义关联) lingtin_dish_mentions.dish_name
 ```
+
+#### lingtin_action_items (AI行动建议表)
+
+AI 基于每日负面反馈生成的改善建议，店长可标记状态。
+
+```sql
+-- 核心字段
+id UUID PRIMARY KEY
+restaurant_id UUID              -- 关联餐厅
+action_date DATE                -- 建议日期
+category VARCHAR(30)            -- dish_quality/service_speed/environment/staff_attitude/other
+suggestion_text TEXT             -- AI生成的建议文案
+priority VARCHAR(10)            -- high/medium/low
+evidence JSONB                  -- 原始反馈证据 [{visitId, tableId, feedback, sentiment}]
+visit_ids UUID[]                -- 关联的桌访记录ID
+status VARCHAR(20)              -- pending/acknowledged/resolved/dismissed
+```
+
+<!-- 未来新增表：lingtin_meeting_records 等，详见 docs/PRD.md 第六节 -->
 
 ## 核心信息流
 
@@ -227,16 +328,12 @@ lingtin_dishname_view
                                               → 写入dish_mentions
 
 4. 展示阶段
-   P2看板: 聚合查询 visit_records + table_sessions
-   P3问答: Claude Text-to-SQL → 查询所有表
+   看板: 聚合查询 visit_records + table_sessions
+   问答: Claude Text-to-SQL → 查询所有表
+
+5. 行动阶段 (v1.1)
+   AI 基于当日负面反馈 → 生成3-5条改善建议 → 店长知悉/解决/忽略
 ```
-
-## 开发规范
-
-- 所有表启用 RLS (Row Level Security)
-- 使用 UUID 作为主键
-- 时间字段使用 TIMESTAMPTZ
-- 中文字段名仅在原有 mt_ 表中保留，新表使用英文
 
 ---
 
@@ -244,7 +341,7 @@ lingtin_dishname_view
 
 ### 使用流程
 
-#### 1️⃣ 录音页面 (`/recorder`)
+#### 录音页面 (`/recorder`)
 
 **操作步骤：**
 1. 打开APP，默认进入「桌访录音」页面
@@ -259,7 +356,7 @@ lingtin_dishname_view
 - 计时器：显示录音时长（MM:SS格式）
 - 今日录音列表：显示状态（处理中/已完成/失败）
 
-#### 2️⃣ 数据看板 (`/dashboard`)
+#### 数据看板 (`/dashboard`)
 
 **查看内容：**
 - **执行覆盖率**：午市/晚市的开台数、桌访数、覆盖率
@@ -269,7 +366,7 @@ lingtin_dishname_view
 
 **时间筛选**：支持「今日/昨日/本周」切换
 
-#### 3️⃣ AI智库 (`/chat`)
+#### AI智库 (`/chat`)
 
 **使用方式：**
 - 输入自然语言问题，如「今天投诉最多的菜是什么？」
@@ -286,8 +383,8 @@ lingtin_dishname_view
 | **录音格式** | WebM/Opus, 44.1kHz, 降噪+回声消除 |
 | **本地存储** | 最多保存 **20条** 录音（localStorage） |
 | **页面显示** | 只显示 **今日** 的录音记录 |
-| **AI分析耗时** | 约 **10-15秒**（讯飞STT 3-5秒 + Gemini 7-10秒） |
-| **离线支持** | ✅ 录音先存本地，有网时后台自动上传处理 |
+| **AI分析耗时** | 约 **10-15秒**（讯飞STT 3-5秒 + AI 7-10秒） |
+| **离线支持** | 录音先存本地，有网时后台自动上传处理 |
 | **失败处理** | 支持点击「重试」按钮重新处理失败的录音 |
 
 ### 处理流程时序
@@ -301,7 +398,7 @@ lingtin_dishname_view
     ↓
 [Step 2] 讯飞语音识别 STT (~3-5秒)
     ↓
-[Step 3] Gemini AI 分析 (~7-10秒)
+[Step 3] AI 分析 (~7-10秒)
     • 菜名纠错（清蒸路鱼→清蒸鲈鱼）
     • 情绪评分（0-1分，0=极差，1=极好）
     • 自动摘要（20字内）
@@ -318,7 +415,7 @@ lingtin_dishname_view
 | `saved` | 已保存本地，等待上传 | 灰色 |
 | `uploading` | 正在上传音频 | 蓝色 |
 | `processing` | AI正在分析 | 黄色/动画 |
-| `completed` | 处理完成 | 绿色 ✓ |
+| `completed` | 处理完成 | 绿色 |
 | `error` | 处理失败 | 红色，可重试 |
 
 ### 注意事项
