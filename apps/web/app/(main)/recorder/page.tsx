@@ -1,9 +1,10 @@
 // Recorder Page - Store manager records table visits with database sync
-// v3.2 - Added date parameter support for viewing historical recordings
+// v3.3 - Added QuestionPrompt during recording
 
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import useSWR from 'swr';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useRecordingStore } from '@/hooks/useRecordingStore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,9 +13,16 @@ import { WaveformVisualizer } from '@/components/recorder/WaveformVisualizer';
 import { RecordButton } from '@/components/recorder/RecordButton';
 import { RecordingHistory } from '@/components/recorder/RecordingHistory';
 import { StealthOverlay } from '@/components/recorder/StealthOverlay';
+import { QuestionPrompt } from '@/components/recorder/QuestionPrompt';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { APP_VERSION } from '@/components/layout/UpdatePrompt';
 import { processRecordingInBackground, retryPendingFromDatabase } from '@/lib/backgroundProcessor';
+
+interface QuestionTemplate {
+  id: string;
+  template_name: string;
+  questions: Array<{ id: string; text: string; category: string }>;
+}
 
 // Format seconds to MM:SS
 function formatDuration(seconds: number): string {
@@ -61,6 +69,12 @@ export default function RecorderPage() {
   const [recorderState, recorderActions] = useAudioRecorder();
   const { isRecording, duration, audioBlob, error, analyserData } = recorderState;
   const { startRecording, stopRecording, resetRecording } = recorderActions;
+
+  // Fetch active question template for this restaurant
+  const { data: templateData } = useSWR<{ template: QuestionTemplate | null }>(
+    restaurantId ? `/api/question-templates/active?restaurant_id=${restaurantId}` : null
+  );
+  const activeQuestions = templateData?.template?.questions ?? [];
 
   // Pass restaurantId and date to sync with database
   const dateParam = getDateString(selectedDate);
@@ -306,6 +320,12 @@ export default function RecorderPage() {
             {formatDuration(duration)}
           </p>
         </div>
+
+        {/* Question Prompt - always visible when questions available */}
+        <QuestionPrompt
+          questions={activeQuestions}
+          visible={activeQuestions.length > 0}
+        />
 
         {/* Table Selector */}
         <TableSelector
