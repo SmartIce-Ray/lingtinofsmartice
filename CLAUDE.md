@@ -47,6 +47,8 @@ pnpm dev:api          # 仅后端 (localhost:3001)
 pnpm build:web        # 构建前端
 pnpm build:api        # 构建后端
 supabase start        # 启动本地 Supabase (localhost:54321)
+# 注意: zsh 下路径含 (main) 等括号时必须加引号，否则 glob 报错
+# 注意: sw.js 是 PWA build 产物（pnpm build:web 生成），改动前端后需一起提交
 ```
 
 ## 开发规范摘要
@@ -58,6 +60,7 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **数据库表** `lingtin_` 前缀，UUID 主键，TIMESTAMPTZ 时间，启用 RLS
 - **Git commit**：`feat|fix|docs|refactor(scope): description`
 - **API 响应**：统一 `{ data, message }` 格式
+- **认证 header**: 使用 `@/contexts/AuthContext` 导出的 `getAuthHeaders()`，不要在页面中重复定义
 
 > 详见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
@@ -79,6 +82,7 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 - **数据库变更**: SQL 迁移文件放 `supabase/migrations/`，由 Jeremy 在线上 Supabase 执行
 - **发布流程**: 本地测试通过 → push/PR 给 Jeremy → Jeremy 负责线上部署
 - **不要直接操作线上 Supabase 数据库**
+- **Git remotes**: `origin` = 上游 (jeremydong22)，`fork` = 贡献者 (SmartIce-Ray)。push 用 `fork`，PR 目标 `origin/main`
 
 ## 外部服务文档
 

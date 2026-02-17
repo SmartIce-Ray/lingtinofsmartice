@@ -49,7 +49,7 @@ interface SlmResultText {
 export class XunfeiSttService {
   private readonly logger = new Logger(XunfeiSttService.name);
 
-  async transcribe(audioUrl: string): Promise<string> {
+  async transcribe(audioUrl: string, timeoutMs: number = STT_TIMEOUT_MS): Promise<string> {
     const appId = process.env.XUNFEI_APP_ID;
     const apiKey = process.env.XUNFEI_API_KEY;
     const apiSecret = process.env.XUNFEI_API_SECRET;
@@ -74,7 +74,7 @@ export class XunfeiSttService {
 
     // Step 3: Send to 讯飞 STT
     const wsUrl = this.buildAuthUrl(apiKey, apiSecret);
-    const transcript = await this.sendAudioAndGetTranscript(wsUrl, appId, pcmBuffer);
+    const transcript = await this.sendAudioAndGetTranscript(wsUrl, appId, pcmBuffer, timeoutMs);
 
     return transcript;
   }
@@ -149,7 +149,7 @@ export class XunfeiSttService {
   }
 
   // 方言大模型WebSocket通信 + 响应解析（非流式，直接拼接最终结果）
-  private sendAudioAndGetTranscript(wsUrl: string, appId: string, audioBuffer: Buffer): Promise<string> {
+  private sendAudioAndGetTranscript(wsUrl: string, appId: string, audioBuffer: Buffer, timeoutMs: number = STT_TIMEOUT_MS): Promise<string> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
       const transcriptParts: string[] = [];
@@ -170,9 +170,9 @@ export class XunfeiSttService {
         if (transcriptParts.length > 0) {
           resolveWithResults('timeout-partial');
         } else {
-          reject(new Error(`STT超时(${STT_TIMEOUT_MS / 1000}s)`));
+          reject(new Error(`STT超时(${timeoutMs / 1000}s)`));
         }
-      }, STT_TIMEOUT_MS);
+      }, timeoutMs);
 
       ws.on('open', () => {
         this.logger.log(`STT开始(方言大模型): ${totalFrames}帧`);
