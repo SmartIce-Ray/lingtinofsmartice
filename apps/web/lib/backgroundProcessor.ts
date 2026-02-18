@@ -21,6 +21,7 @@
 //   upload.findPreviousUploads().then(prev => { if (prev.length) upload.resumeFromPreviousUpload(prev[0]); upload.start(); });
 
 import { Recording, RecordingStatus } from '@/hooks/useRecordingStore';
+import { MeetingRecord, MeetingStatus } from '@/hooks/useMeetingStore';
 import { getAuthHeaders } from '@/contexts/AuthContext';
 import { getApiUrl } from '@/lib/api';
 
@@ -346,6 +347,188 @@ export async function retryFailedRecordings(
 
   for (const recording of failed) {
     await processRecordingInBackground(recording, callbacks);
+  }
+}
+
+// Meeting processing callbacks
+interface MeetingProcessingCallbacks {
+  onStatusChange: (id: string, status: MeetingStatus, data?: Partial<MeetingRecord>) => void;
+  onError: (id: string, error: string) => void;
+}
+
+// Meeting-specific timeouts
+const MEETING_UPLOAD_TIMEOUT_MS = 180000;   // 3 minutes (30-min audio ~10MB)
+const MEETING_PROCESS_TIMEOUT_MS = 300000;  // 5 minutes -- rely on Supabase Realtime for completion
+
+export async function processMeetingInBackground(
+  meeting: MeetingRecord,
+  callbacks: MeetingProcessingCallbacks,
+  restaurantId?: string
+) {
+  const { id, meetingType, duration, audioData, audioUrl: existingAudioUrl } = meeting;
+  const startTime = Date.now();
+  const authHeaders = getAuthHeaders();
+
+  const abortController = new AbortController();
+  activeProcessing.set(id, abortController);
+
+  log(`Starting meeting pipeline for ${id} (type: ${meetingType})`);
+
+  if (!audioData && !existingAudioUrl) {
+    logError(`Meeting ${id} has no audio data`);
+    callbacks.onError(id, '录音数据丢失');
+    activeProcessing.delete(id);
+    return;
+  }
+
+  try {
+    if (abortController.signal.aborted) return;
+
+    let audioUrl: string;
+    let meetingId: string = id;
+
+    if (existingAudioUrl) {
+      log(`[Step 1/3] Audio already uploaded, skipping`);
+      audioUrl = existingAudioUrl;
+      callbacks.onStatusChange(id, 'processing', { audioUrl });
+    } else {
+      log(`[Step 1/3] Uploading meeting audio...`);
+      callbacks.onStatusChange(id, 'uploading');
+
+      const audioBlob = base64ToBlob(audioData!);
+      log(`Audio blob: ${(audioBlob.size / 1024).toFixed(1)} KB`);
+
+      const ext = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
+      const formData = new FormData();
+      formData.append('file', audioBlob, `meeting_${meetingType}_${Date.now()}.${ext}`);
+      formData.append('meeting_type', meetingType);
+      formData.append('recording_id', id);
+      if (restaurantId) {
+        formData.append('restaurant_id', restaurantId);
+      }
+      if (duration > 0) {
+        formData.append('duration_seconds', String(Math.round(duration)));
+      }
+
+      const uploadResponse = await fetchWithTimeout(getApiUrl('api/meeting/upload'), {
+        method: 'POST',
+        headers: authHeaders,
+        body: formData,
+      }, MEETING_UPLOAD_TIMEOUT_MS, abortController);
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        logError(`Meeting upload failed: ${uploadResponse.status}`, errorText);
+        if (uploadResponse.status === 401) {
+          handleAuthExpired();
+          throw new Error('登录已过期，请重新登录');
+        }
+        throw new Error(`上传失败: ${uploadResponse.status}`);
+      }
+
+      const uploadResult = await uploadResponse.json();
+      log(`[Step 1/3] Upload complete`, uploadResult);
+      audioUrl = uploadResult.audioUrl;
+      meetingId = uploadResult.meeting_id;
+
+      if (abortController.signal.aborted) return;
+      callbacks.onStatusChange(id, 'processing', { audioUrl });
+    }
+
+    // Step 2: Trigger AI pipeline
+    log(`[Step 2/3] Starting meeting AI processing (STT + minutes)...`);
+
+    let processResult = null;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+      if (abortController.signal.aborted) return;
+
+      try {
+        log(`[Step 2/3] AI processing attempt ${attempt}/${MAX_RETRY_ATTEMPTS}...`);
+
+        const processResponse = await fetchWithTimeout(getApiUrl('api/meeting/process'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({
+            recording_id: meetingId,
+            audio_url: audioUrl,
+            meeting_type: meetingType,
+            restaurant_id: restaurantId,
+          }),
+        }, MEETING_PROCESS_TIMEOUT_MS, abortController);
+
+        if (!processResponse.ok) {
+          const errorText = await processResponse.text();
+          logError(`Meeting AI failed (attempt ${attempt}): ${processResponse.status}`, errorText);
+          let errorMsg = `处理失败: ${processResponse.status}`;
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.message) errorMsg = errorJson.message;
+          } catch { /* use default */ }
+          throw new Error(errorMsg);
+        }
+
+        processResult = await processResponse.json();
+        log(`[Step 2/3] AI processing complete`);
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (lastError.name === 'AbortError') throw lastError;
+        if (attempt < MAX_RETRY_ATTEMPTS) {
+          log(`[Step 2/3] Attempt ${attempt} failed, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        }
+      }
+    }
+
+    if (!processResult && lastError) throw lastError;
+
+    // Step 3: Update with results
+    log(`[Step 3/3] Updating UI with meeting results...`);
+    callbacks.onStatusChange(id, 'completed', {
+      aiSummary: processResult.aiSummary,
+      actionItems: processResult.actionItems,
+      keyDecisions: processResult.keyDecisions,
+    });
+
+    const totalTime = Date.now() - startTime;
+    log(`Meeting pipeline complete! Total time: ${totalTime}ms`);
+
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      log(`Meeting processing cancelled for ${id}`);
+      return;
+    }
+
+    let message = '处理失败';
+    if (error instanceof Error) message = error.message;
+    logError(`Meeting pipeline failed for ${id}`, error);
+
+    const isAlreadyProcessed = message.includes('already processed') ||
+                                message.includes('already processing') ||
+                                message.includes('Meeting already');
+
+    if (isAlreadyProcessed) {
+      log(`Meeting ${id} was already processed`);
+      callbacks.onStatusChange(id, 'completed', {});
+      return;
+    }
+
+    try {
+      await fetchWithTimeout(getApiUrl(`api/meeting/${id}/status`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ status: 'error', error_message: message }),
+      }, 5000);
+    } catch (updateError) {
+      logError(`Failed to update meeting error status for ${id}`, updateError);
+    }
+
+    callbacks.onError(id, message);
+    callbacks.onStatusChange(id, 'error', { errorMessage: message });
+  } finally {
+    activeProcessing.delete(id);
   }
 }
 
