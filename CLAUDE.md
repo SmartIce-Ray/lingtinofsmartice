@@ -31,7 +31,7 @@ lingtin/
 │   │   └── lib/                     # api.ts, backgroundProcessor.ts, supabase/
 │   └── api/                          # NestJS 后端 (@lingtin/api)
 │       └── src/
-│           ├── modules/             # audio/, auth/, chat/, dashboard/, staff/
+│           ├── modules/             # audio/, auth/, chat/, dashboard/, meeting/, question-templates/, staff/
 │           └── common/              # Supabase 客户端, 工具函数
 ├── packages/                         # 共享包
 ├── docs/                             # 产品 & 开发文档
@@ -85,6 +85,7 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 - **发布流程**: 本地测试通过 → push/PR 给 Jeremy → Jeremy 负责线上部署
 - **不要直接操作线上 Supabase 数据库**
 - **Git remotes**: `origin` = 上游 (jeremydong22)，`fork` = 贡献者 (SmartIce-Ray)。push 用 `fork`，PR 目标 `origin/main`
+- **创建 PR**: `gh pr create --repo jeremydong22/lingtinofsmartice --head SmartIce-Ray:<branch> --base main`；若 PR 已存在，用 `gh pr edit <number> --repo ...` 更新
 
 ## 外部服务文档
 
@@ -105,7 +106,7 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 
 ## 数据库概览
 
-核心表：`lingtin_visit_records`、`lingtin_dish_mentions`、`lingtin_table_sessions`、`lingtin_action_items`
+核心表：`lingtin_visit_records`、`lingtin_dish_mentions`、`lingtin_table_sessions`、`lingtin_action_items`、`lingtin_meeting_records`、`lingtin_question_templates`
 只读引用：`master_restaurant`、`master_employee`、`mt_dish_sales`
 视图：`lingtin_dishname_view`
 

@@ -38,6 +38,7 @@ XUNFEI_APP_ID=<见.env>
 GEMINI_API_KEY=<见.env>
 ANTHROPIC_API_KEY=<见.env>
 OPENROUTER_API_KEY=<见.env>
+DASHSCOPE_API_KEY=<见.env>          # 阿里 Paraformer-v2 STT (可选, 未配置时回退讯飞)
 ```
 
 ### Docker 构建注意事项

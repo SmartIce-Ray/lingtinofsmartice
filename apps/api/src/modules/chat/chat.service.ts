@@ -358,7 +358,7 @@ this.logger.log(`Messages in context: ${messages.length}`);
     }
 
     const requestBody = {
-      model: 'google/gemini-2.0-flash-001',
+      model: 'google/gemini-2.5-flash',
       max_tokens: 2048,
       messages: [
         { role: 'system', content: systemPrompt },

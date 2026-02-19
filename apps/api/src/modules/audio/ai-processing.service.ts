@@ -1,9 +1,10 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v3.9 - 去掉Gemini纠偏步骤，方言大模型STT结果直接作为最终文本
+// v5.0 - DashScope Paraformer-v2 STT (with Xunfei fallback) + Gemini 2.5 Flash
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { XunfeiSttService } from './xunfei-stt.service';
+import { DashScopeSttService } from './dashscope-stt.service';
 
 // OpenRouter API Configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -34,6 +35,7 @@ export class AiProcessingService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly xunfeiStt: XunfeiSttService,
+    private readonly dashScopeStt: DashScopeSttService,
   ) {}
 
   /**
@@ -94,9 +96,28 @@ export class AiProcessingService {
         };
       }
 
+      // Step 2.5: Clean transcript before AI processing
+      const cleanedTranscript = this.cleanTranscript(rawTranscript);
+      this.logger.log(`清洗完成: ${rawTranscript.length}字 → ${cleanedTranscript.length}字`);
+
+      // Step 2.6: Handle cleaned transcript being empty (all filler words)
+      if (!cleanedTranscript.trim()) {
+        this.logger.warn(`清洗后无有效内容，跳过AI处理`);
+        const fillerResult = {
+          correctedTranscript: rawTranscript,
+          aiSummary: '语音内容无有效信息',
+          sentimentScore: 0.5,
+          feedbacks: [] as FeedbackItem[],
+          managerQuestions: [] as string[],
+          customerAnswers: [] as string[],
+        };
+        await this.saveResults(recordingId, { rawTranscript, ...fillerResult });
+        return { transcript: rawTranscript, ...fillerResult };
+      }
+
       // Step 3: AI Tagging (Gemini) - 只做打标，不做纠偏
-      const aiResult = await this.processWithGemini(rawTranscript);
-      // STT结果直接作为correctedTranscript（方言大模型已足够准确）
+      const aiResult = await this.processWithGemini(cleanedTranscript);
+      // correctedTranscript 保留原始 STT 结果（用于调试对比）
       aiResult.correctedTranscript = rawTranscript;
       this.logger.log(`AI完成: ${aiResult.aiSummary}`);
 
@@ -197,23 +218,85 @@ export class AiProcessingService {
   }
 
   /**
-   * Transcribe audio using 讯飞 STT (WebSocket-based, non-streaming)
-   * Throws error if credentials not configured or STT fails
+   * Transcribe audio: DashScope Paraformer-v2 first, fallback to 讯飞
    */
   private async transcribeAudio(audioUrl: string): Promise<string> {
+    // Try DashScope first if configured
+    if (this.dashScopeStt.isConfigured()) {
+      try {
+        const transcript = await this.dashScopeStt.transcribe(audioUrl, 2);
+        return transcript;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`DashScope STT failed, falling back to 讯飞: ${msg}`);
+      }
+    }
+
+    // Fallback: 讯飞 STT
     const XUNFEI_APP_ID = process.env.XUNFEI_APP_ID;
     const XUNFEI_API_KEY = process.env.XUNFEI_API_KEY;
     const XUNFEI_API_SECRET = process.env.XUNFEI_API_SECRET;
 
-    // Check if 讯飞 credentials are configured
     if (!XUNFEI_APP_ID || !XUNFEI_API_KEY || !XUNFEI_API_SECRET) {
       this.logger.error('讯飞 credentials not configured');
-      throw new Error('STT_NOT_CONFIGURED: 讯飞语音识别未配置');
+      throw new Error('STT_NOT_CONFIGURED: 语音识别未配置 (DashScope 和讯飞均不可用)');
     }
 
-    // Use 讯飞 STT service to transcribe audio
-    const transcript = await this.xunfeiStt.transcribe(audioUrl);
-    return transcript;
+    this.logger.log('Using 讯飞 STT (fallback)');
+    return this.xunfeiStt.transcribe(audioUrl);
+  }
+
+  /**
+   * Clean raw STT transcript before AI analysis
+   * - Deduplicate consecutive repeated phrases
+   * - Remove filler-word-only segments
+   * - Merge very short fragments into adjacent sentences
+   */
+  private cleanTranscript(raw: string): string {
+    // If DashScope speaker labels are present, only do light dedup per line
+    if (/说话人\d+[:：]/.test(raw)) {
+      return raw
+        .split('\n')
+        .map((line) => line.replace(/(.{1,6})\1{2,}/g, '$1'))
+        .join('\n');
+    }
+
+    // Split into segments by common delimiters (，。！？、；,.)
+    let segments = raw.split(/(?<=[，。！？、；,.?!])\s*/);
+
+    // If no delimiter was found, treat the whole text as one segment
+    if (segments.length <= 1 && raw.length > 0) {
+      segments = [raw];
+    }
+
+    // Step 1: Deduplicate consecutive repeated phrases
+    // e.g. "好的好的好的" → "好的", "对对对" → "对"
+    const deduped = segments.map((seg) => {
+      // Match patterns where a short phrase (1-6 chars) repeats 3+ times consecutively
+      return seg.replace(/(.{1,6})\1{2,}/g, '$1');
+    });
+
+    // Step 2: Filter out segments that are purely filler words
+    const FILLER_PATTERN = /^[嗯啊哦额呃嗨哎唉呀哈嘿呢吧啦么吗的了哦噢嗷欸]+$/;
+    const filtered = deduped.filter((seg) => {
+      const trimmed = seg.replace(/[，。！？、；,.?!\s]/g, '');
+      if (trimmed.length === 0) return false;
+      return !FILLER_PATTERN.test(trimmed);
+    });
+
+    // Step 3: Merge very short fragments (<3 meaningful chars) into adjacent sentences
+    const merged: string[] = [];
+    for (const seg of filtered) {
+      const meaningful = seg.replace(/[，。！？、；,.?!\s]/g, '');
+      if (meaningful.length < 3 && merged.length > 0) {
+        // Append to previous segment
+        merged[merged.length - 1] += seg;
+      } else {
+        merged.push(seg);
+      }
+    }
+
+    return merged.join('');
   }
 
   /**
@@ -232,6 +315,13 @@ export class AiProcessingService {
     }
 
     const systemPrompt = `分析餐饮桌访对话，提取结构化信息。
+
+## 说话人识别指引
+对话文本可能包含"说话人1:"、"说话人2:"等标签（来自语音识别的说话人分离）。
+- 说话人1 通常是店长/服务员（主动提问、问候的一方）
+- 说话人2 通常是顾客（回答、给出反馈的一方）
+- 但你必须根据对话内容语义来判断角色，不要盲目信任标签
+- 如果没有说话人标签，则根据上下文推断谁是店长、谁是顾客
 
 输出JSON格式（只输出JSON，无其他内容）：
 {
@@ -257,7 +347,7 @@ export class AiProcessingService {
    - 0.6~0.7: 顾客表达满意但不热烈，如"味道不错"、"挺好的"
    - 0.8~0.9: 顾客多次夸赞、明确表示会再来
 
-2. feedbacks: 提取顾客对菜品、服务、环境的评价短语，最多5个
+2. feedbacks: 提取顾客对菜品、服务、环境的所有评价短语（不限数量，但不要编造）
    - 每条必须包含评价对象+评价词（如"清蒸鲈鱼很新鲜"而不是单独的"新鲜"）
    - 如果原文没有提到具体菜品，不要编造菜品名称，可用原文表述如"菜很好吃"
    - 一句话包含多个评价时拆分：如"菜好吃但上菜慢"→ 拆成两条
@@ -284,7 +374,7 @@ export class AiProcessingService {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `对话文本：\n${transcript}` },
@@ -322,7 +412,14 @@ export class AiProcessingService {
       throw new Error('AI_PARSE_ERROR: 无法解析 AI 返回结果');
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let result: any;
+    try {
+      result = JSON.parse(jsonMatch[0]);
+    } catch {
+      this.logger.error(`AI返回无效JSON: ${jsonMatch[0].substring(0, 200)}`);
+      throw new Error('AI_PARSE_ERROR: 无法解析 AI 返回的JSON');
+    }
 
     return {
       correctedTranscript: '', // 由调用方设置为rawTranscript

@@ -1,9 +1,10 @@
 // Meeting AI Processing Service - STT + AI minutes generation
-// Uses XunfeiSttService (shared from AudioModule) with extended timeout for long meetings
+// v2.0 - DashScope Paraformer-v2 (with Xunfei fallback) + Gemini 2.5 Flash
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { XunfeiSttService } from '../audio/xunfei-stt.service';
+import { DashScopeSttService } from '../audio/dashscope-stt.service';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -25,6 +26,7 @@ export class MeetingAiProcessingService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly xunfeiStt: XunfeiSttService,
+    private readonly dashScopeStt: DashScopeSttService,
   ) {}
 
   async processMeeting(
@@ -50,8 +52,19 @@ export class MeetingAiProcessingService {
       const startTime = Date.now();
       this.logger.log(`Pipeline: ${meetingType} 开始处理`);
 
-      // Step 1: STT with extended timeout
-      const rawTranscript = await this.xunfeiStt.transcribe(audioUrl, MEETING_STT_TIMEOUT_MS);
+      // Step 1: STT — DashScope first (speaker_count=4 for meetings), fallback to 讯飞
+      let rawTranscript: string;
+      if (this.dashScopeStt.isConfigured()) {
+        try {
+          rawTranscript = await this.dashScopeStt.transcribe(audioUrl, 4, 600000);
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          this.logger.warn(`DashScope STT failed, falling back to 讯飞: ${msg}`);
+          rawTranscript = await this.xunfeiStt.transcribe(audioUrl, MEETING_STT_TIMEOUT_MS);
+        }
+      } else {
+        rawTranscript = await this.xunfeiStt.transcribe(audioUrl, MEETING_STT_TIMEOUT_MS);
+      }
       this.logger.log(`STT完成: ${rawTranscript.length}字`);
 
       if (!rawTranscript || rawTranscript.trim().length === 0) {
@@ -66,8 +79,12 @@ export class MeetingAiProcessingService {
         return emptyResult;
       }
 
+      // Step 1.5: Light cleaning — deduplicate repeated phrases
+      const cleanedTranscript = rawTranscript.replace(/(.{1,6})\1{2,}/g, '$1');
+      this.logger.log(`清洗完成: ${rawTranscript.length}字 → ${cleanedTranscript.length}字`);
+
       // Step 2: AI minutes generation
-      const aiResult = await this.generateMinutes(rawTranscript, meetingType);
+      const aiResult = await this.generateMinutes(cleanedTranscript, meetingType);
       this.logger.log(`AI完成: ${aiResult.actionItems.length} action items`);
 
       // Step 3: Save results
@@ -132,7 +149,7 @@ export class MeetingAiProcessingService {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `会议转写文本：\n${transcript}` },
