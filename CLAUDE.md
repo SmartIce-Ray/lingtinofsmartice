@@ -4,14 +4,14 @@
 
 餐饮行业语音智能管理平台，以消费者反馈驱动管理闭环：**说了 → 记了 → 做了 → 验了**。当前阶段聚焦**店长单店闭环**（桌访录音 + AI 分析 + 行动建议）。
 
-> 完整产品定义见 [docs/PRD.md](docs/PRD.md)，开发规范见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+> 完整产品定义见 [docs/PRD.md](docs/PRD.md)，开发规范见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)，产品反馈与需求记录见 [docs/FEEDBACK-LOG.md](docs/FEEDBACK-LOG.md)。
 
 ## 技术栈
 
 - **前端**: Next.js 14 + PWA + Tailwind CSS + SWR
 - **后端**: NestJS (Node.js)
 - **数据库**: Supabase (PostgreSQL)
-- **AI**: 讯飞 STT (方言大模型) + Gemini / Claude SDK
+- **AI**: DashScope Paraformer-v2 STT (讯飞回退) + Gemini 2.5 Flash (via OpenRouter)
 - **存储**: Supabase Storage
 - **认证**: Supabase Auth + JWT
 
@@ -34,7 +34,7 @@ lingtin/
 │           ├── modules/             # audio/, auth/, chat/, dashboard/, meeting/, question-templates/, staff/
 │           └── common/              # Supabase 客户端, 工具函数
 ├── packages/                         # 共享包
-├── docs/                             # 产品 & 开发文档
+├── docs/                             # 产品 & 开发文档 (含 FEEDBACK-LOG.md 产品反馈与需求记录)
 └── pnpm-workspace.yaml               # Monorepo 配置
 ```
 
@@ -62,7 +62,11 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **API 响应**：统一 `{ data, message }` 格式
 - **认证 header**: 使用 `@/contexts/AuthContext` 导出的 `getAuthHeaders()`，不要在页面中重复定义
 - **Supabase UUID 查询**：所有 service 方法中 `restaurant_id` 参数必须做 UUID 校验，非法值回退 `DEFAULT_RESTAURANT_ID`
-- **产品使用指南同步更新** — 每次功能迭代后，同步更新 `docs/user-guides/` 对应角色的手册（店长/管理层/店员），记录功能变更与最佳实践
+- **产品使用指南同步更新** — 每次功能迭代后，同步更新 `docs/user-guides/` 对应角色的指南，记录功能变更与最佳实践。**按角色分文件**（`store-manager.md`、`management.md`、`staff.md`），**每个角色一份完整文件，不再拆分成子目录或多个小文件**
+- **DashScope API 注意** — 提交用 `/api/v1/services/audio/asr/transcription`，轮询用 `/api/v1/tasks/{id}`，两个路径不同；`transcription_url` 是预签名 OSS URL，不需要 Authorization header
+- **STT 回退模式** — DashScope 优先，失败或未配置自动回退讯飞；`extractTranscript` 失败必须抛异常（不能返回空串），否则回退不触发
+- **AI JSON 解析** — OpenRouter 返回的 JSON 必须用 try-catch 包裹 `JSON.parse`，catch 中记录原始内容前 200 字用于调试
+- **面向店长的内容** — 讲功能价值时站在店长角度（省时间、不遗漏、被认可），不要暗示"做给老板看"或"被老板监控"。强调"你的用心会被看见"，而非"老板能看到你的数据"
 
 > 详见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
@@ -93,13 +97,15 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 |------|----------|------|
 | 讯飞方言大模型 | https://www.xfyun.cn/doc/spark/spark_slm_iat.html | STT语音识别，支持202种方言自动识别 |
 | 讯飞开放平台控制台 | https://console.xfyun.cn/ | API密钥管理、服务开通 |
+| DashScope | https://help.aliyun.com/zh/model-studio/paraformer-recorded-speech-recognition-restful-api | Paraformer-v2 录音文件识别 REST API |
+| DashScope 控制台 | https://dashscope.console.aliyun.com/ | API Key 管理 |
 
 ## 核心信息流
 
 ```
 1. 预置: mt_dish_sales → lingtin_dishname_view (菜品字典)
 2. 采集: 店长录音 + 桌号 → Supabase Storage → lingtin_visit_records
-3. 处理: 讯飞STT → 纠偏(dishname_view) → 自动打标 → visit_records + dish_mentions
+3. 处理: DashScope STT(讯飞回退) → 清洗 → 自动打标 → visit_records + dish_mentions
 4. 展示: 看板(visit_records + table_sessions) / 问答(Text-to-SQL)
 5. 行动: AI 负面反馈 → 改善建议(action_items) → 店长处理
 ```
@@ -132,4 +138,4 @@ master_employee (1)   ──< visit_records (N)
 
 三个核心页面：录音(`/recorder`) → 看板(`/dashboard`) → AI智库(`/chat`)
 
-> 按角色组织的完整使用手册详见 @docs/user-guides/README.md
+> 按角色分文件的完整使用手册详见 @docs/user-guides/README.md
