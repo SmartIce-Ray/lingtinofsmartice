@@ -91,9 +91,10 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 - **数据库变更**: SQL 迁移文件放 `supabase/migrations/`，由 Jeremy 在线上 Supabase 执行
 - **发布流程**: 本地测试通过 → push/PR 给 Jeremy → Jeremy 负责线上部署
 - **不要直接操作线上 Supabase 数据库**
-- **Git remotes**: `origin` = 上游 (jeremydong22)，`fork` = 贡献者 (SmartIce-Ray)。push 用 `fork`，PR 目标 `origin/main`
-- **创建 PR**: `gh pr create --repo jeremydong22/lingtinofsmartice --head SmartIce-Ray:<branch> --base main`；若 PR 已存在，用 `gh pr edit <number> --repo ...` 更新
-- **Force push（rebase 后）**: 必须 push 到 `fork`，不是 `origin`。PR head 是 `SmartIce-Ray:<branch>`，push 到 `origin` 不会更新 PR。push 前先 `git fetch fork <branch>` 刷新 tracking info，否则 `--force-with-lease` 会因 stale info 被拒绝
+- **Git remotes**: `origin` = 上游 (jeremydong22)，`fork` = 贡献者 (SmartIce-Ray)。SmartIce-Ray 已是 collaborator，可直接 push 到 `origin`
+- **Push 策略**: 默认 push 到 `origin`（Jeremy 仓库），可同时 push 到 `fork` 作为备份（`git push fork <branch>`）
+- **创建 PR**: `gh pr create --repo jeremydong22/lingtinofsmartice --base main`；若 PR 已存在，用 `gh pr edit <number> --repo ...` 更新
+- **Force push（rebase 后）**: push 前先 `git fetch origin <branch>` 刷新 tracking info，否则 `--force-with-lease` 会因 stale info 被拒绝
 
 ## 外部服务文档
 
