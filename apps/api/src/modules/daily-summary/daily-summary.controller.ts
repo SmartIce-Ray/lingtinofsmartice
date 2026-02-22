@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Query } from '@nestjs/common';
 import { DailySummaryService } from './daily-summary.service';
 import { getChinaDateString } from '../../common/utils/date';
+import { Public } from '../auth/public.decorator';
 
 @Controller('daily-summary')
 export class DailySummaryController {
@@ -17,6 +18,7 @@ export class DailySummaryController {
     );
   }
 
+  @Public()
   @Post('generate')
   async generateDailySummary(
     @Query('restaurant_id') restaurantId: string,
