@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { getApiUrl } from '@/lib/api';
+import { getAuthHeaders } from '@/contexts/AuthContext';
 
 interface EvidenceItem {
   visitId: string;
@@ -74,14 +75,13 @@ export function ActionItemsCard({ restaurantId, date }: ActionItemsCardProps) {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const token = localStorage.getItem('lingtin_auth_token');
       const res = await fetch(
         getApiUrl(`api/action-items/generate?${params}`),
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...getAuthHeaders(),
           },
         },
       );
@@ -98,14 +98,13 @@ export function ActionItemsCard({ restaurantId, date }: ActionItemsCardProps) {
   const handleUpdateStatus = async (id: string, status: string, note?: string) => {
     setUpdatingId(id);
     try {
-      const token = localStorage.getItem('lingtin_auth_token');
       const res = await fetch(
         getApiUrl(`api/action-items/${id}`),
         {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...getAuthHeaders(),
           },
           body: JSON.stringify({ status, note }),
         },

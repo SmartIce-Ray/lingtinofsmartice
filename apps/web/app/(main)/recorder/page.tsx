@@ -20,6 +20,7 @@ import { MeetingAgendaCard } from '@/components/recorder/MeetingAgendaCard';
 import { PreMealReminder } from '@/components/recorder/PreMealReminder';
 import { MeetingHistory } from '@/components/recorder/MeetingHistory';
 import { MeetingDetail } from '@/components/recorder/MeetingDetail';
+import { MotivationBanner } from '@/components/recorder/MotivationBanner';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { APP_VERSION } from '@/components/layout/UpdatePrompt';
 import {
@@ -419,34 +420,38 @@ export default function RecorderPage() {
           </div>
         )}
 
-        {/* Waveform Visualizer (shared) */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <WaveformVisualizer
-            analyserData={analyserData}
-            isRecording={isRecording}
+        {/* Motivation Banner - visible when not recording */}
+        {!isRecording && (
+          <MotivationBanner
+            restaurantId={restaurantId}
+            userName={user?.employeeName}
           />
-          <p className="text-center text-2xl font-mono text-gray-700 mt-4">
-            {formatDuration(duration)}
-          </p>
-        </div>
+        )}
+
+        {/* Waveform Visualizer - only visible when recording */}
+        {isRecording && (
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <WaveformVisualizer
+              analyserData={analyserData}
+              isRecording={isRecording}
+            />
+            <p className="text-center text-2xl font-mono text-gray-700 mt-3">
+              {formatDuration(duration)}
+            </p>
+          </div>
+        )}
 
         {/* Mode-specific content */}
         {mode === 'visit' ? (
           <>
-            {/* Question Prompt - visit mode only */}
-            <QuestionPrompt
-              questions={activeQuestions}
-              visible={activeQuestions.length > 0}
-            />
-
-            {/* Table Selector */}
+            {/* 1. Table Selector - first action */}
             <TableSelector
               value={tableId}
               onChange={setTableId}
               disabled={isRecording}
             />
 
-            {/* Record Button with Stealth Mode Toggle */}
+            {/* 2. Record Button + Stealth - primary CTA */}
             <div className="flex justify-center items-center gap-4 py-2">
               <RecordButton
                 isRecording={isRecording}
@@ -467,7 +472,13 @@ export default function RecorderPage() {
               )}
             </div>
 
-            {/* Recording History */}
+            {/* 3. Question Prompt - reference card, collapsed by default */}
+            <QuestionPrompt
+              questions={activeQuestions}
+              visible={activeQuestions.length > 0}
+            />
+
+            {/* 4. Recording History */}
             <RecordingHistory
               recordings={recordings}
               onRetry={handleVisitRetry}

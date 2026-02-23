@@ -301,6 +301,7 @@ export class MeetingAiProcessingService {
 
     if (error) {
       this.logger.error(`Failed to save meeting results: ${error.message}`);
+      throw new Error(`DB_WRITE_ERROR: 保存会议纪要失败 - ${error.message}`);
     }
   }
 
