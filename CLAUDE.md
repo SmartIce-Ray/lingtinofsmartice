@@ -99,7 +99,7 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 | 优先级 | 债务 | 描述 | 状态 |
 |--------|------|------|------|
 | 🟡 中 | 无告警机制 | STT/AI 大规模失败时无主动通知（只能事后看日志） | 待优化 |
-| 🟡 中 | 52 条历史 error 记录待重跑 | 昨日录音因 OpenRouter 403 + 讯飞 11203 全部失败，audio_url 保留，待 STT 修复后批量重处理 | 待执行 |
+| ✅ | 52 条历史 error 记录已重置 | 已通过 Supabase 将 error 重置为 pending（35 条），下次店长打开录音页自动重跑 | 已完成 |
 - **版本号更新** — 每次功能迭代提交前，必须更新 `apps/web/components/layout/UpdatePrompt.tsx` 中的 `APP_VERSION`（递增 patch 版本）和 `BUILD_DATE`（当天日期）
 - **DATABASE.md 与实际表有差异** — `lingtin_visit_records` 实际含 `feedbacks JSONB` 列（AI 评价短语列表），但 DATABASE.md 未记录。修改 schema 前先查实际表结构
 
