@@ -8,6 +8,7 @@ import { useCallback, useRef } from 'react';
 interface RecordButtonProps {
   isRecording: boolean;
   disabled?: boolean;
+  disabledHint?: string;
   onStart: () => void;
   onStop: () => void;
 }
@@ -15,6 +16,7 @@ interface RecordButtonProps {
 export function RecordButton({
   isRecording,
   disabled = false,
+  disabledHint,
   onStart,
   onStop,
 }: RecordButtonProps) {
@@ -77,8 +79,8 @@ export function RecordButton({
       </div>
 
       {/* Help text */}
-      <p className="text-gray-500 text-sm">
-        {isRecording ? '点击停止录音' : '点击开始录音'}
+      <p className={`text-sm ${disabled ? 'text-gray-400' : 'text-gray-500'}`}>
+        {disabled && disabledHint ? disabledHint : isRecording ? '点击停止录音' : '点击开始录音'}
       </p>
     </div>
   );
