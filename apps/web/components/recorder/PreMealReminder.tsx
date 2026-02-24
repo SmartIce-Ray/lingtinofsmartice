@@ -75,8 +75,18 @@ export function PreMealReminder({ restaurantId }: PreMealReminderProps) {
     );
   }
 
-  // No pending items — don't show anything
-  if (items.length === 0) return null;
+  // No pending items — show a ready card instead of nothing
+  if (items.length === 0) {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex items-center gap-3">
+        <span className="text-xl flex-shrink-0">✅</span>
+        <div>
+          <p className="text-sm font-medium text-green-800">昨日待办全部跟进完毕</p>
+          <p className="text-xs text-green-600 mt-0.5">今天开门红！开始录制餐前会吧</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">

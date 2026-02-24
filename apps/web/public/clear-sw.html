@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Clearing cache...</title></head>
+<body>
+<p id="msg">正在清除 Service Worker 缓存...</p>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    regs.forEach(function(r) { r.unregister(); });
+    document.getElementById('msg').textContent = '✅ 已清除缓存，正在跳转...';
+    setTimeout(function(){ window.location.href = '/'; }, 800);
+  });
+} else {
+  window.location.href = '/';
+}
+</script>
+</body>
+</html>

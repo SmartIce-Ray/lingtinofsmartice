@@ -116,12 +116,14 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 - **每次只改一个功能** — 不要在一轮对话中同时处理多个不相关的功能
 - **回复保持简洁** — 给出关键信息即可，不要重复粘贴大段代码
 - **用 /compact 保留重点** — 上下文接近上限时，使用 `/compact` 并指定保留重点
+- **阶段性保存进度** — 见全局规则。compact、结束 session、或完成阶段任务时，将关键发现写入本文件末尾"进行中工作"区块
 
 ## 协作工作流
 
 - **本地开发**: `supabase start` + `pnpm dev` → 本地测试
 - **数据库变更**: SQL 迁移文件放 `supabase/migrations/`，由 Jeremy 在线上 Supabase 执行
-- **发布流程**: 本地测试通过 → push/PR 给 Jeremy → Jeremy 负责线上部署
+- **发布流程**: 代码改动 + 构建通过 → **提示用户 `pnpm dev` 本地测试** → 用户确认无误 → commit + push → PR 给 Jeremy → Jeremy 负责线上部署
+- **提交前必须等用户确认** — 构建通过后不要自动 commit + push，必须先停下来让用户手动验证功能，用户明确说"OK/没问题/可以提交"后才执行 commit + push
 - **不要直接操作线上 Supabase 数据库**
 - **Git remotes**: `origin` = 上游 (jeremydong22)，`fork` = 贡献者 (SmartIce-Ray)。SmartIce-Ray 已是 collaborator，可直接 push 到 `origin`
 - **Push 策略**: 默认 push 到 `origin`（Jeremy 仓库），可同时 push 到 `fork` 作为备份（`git push fork <branch>`）
@@ -176,3 +178,14 @@ master_employee (1)   ──< visit_records (N)
 三个核心页面：录音(`/recorder`) → 看板(`/dashboard`) → AI智库(`/chat`)
 
 > 按角色分文件的完整使用手册详见 @docs/user-guides/README.md
+
+## 进行中工作
+
+> 此区块在 compact、结束 session、或完成阶段任务时更新，确保下次 session 能无缝衔接。
+
+| 任务 | 分支 | 状态 | 关键笔记 |
+|------|------|------|----------|
+| 看板反馈录音播放 | feat/meeting-recording | 代码完成，待部署测试 | 后端 dashboard.service.ts 加 `audio_url` 字段，前端 dashboard/page.tsx 加播放按钮（播放/暂停/切换/关闭停止）。构建通过。需先部署后端到 Zeabur，再用 `pnpm dev:web` 对线上 API 测试 |
+| 录音页视觉优化 Phase 2 | feat/meeting-recording | 代码完成，待提交 | 间距节奏+触控44px+会议配色+按钮联动+周例会提示卡(gray风格)。未提交文件：page.tsx, MeetingTypeSelector.tsx, RecordButton.tsx, TableSelector.tsx, UpdatePrompt.tsx, sw.js |
+| 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 签发于 2025-01-23，早于项目创建日期 2025-03-26，Supabase 返回 "Invalid API key"。线上 Zeabur 有正确 key 所以生产正常。修复方法：从 Supabase Dashboard (Settings > API Keys > Legacy > service_role) 获取正确 key 替换 .env |
+| 工作连续性机制 | feat/meeting-recording | 已实现 | ~/.claude/CLAUDE.md(全局规则) + 项目CLAUDE.md(进行中工作区块) 均已写入，待随下次 commit 一起提交 |

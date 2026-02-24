@@ -18,6 +18,7 @@ export interface FeedbackWithContext {
   managerQuestions: string[];
   customerAnswers: string[];
   transcript: string;
+  audioUrl: string | null;
 }
 
 @Injectable()
@@ -306,7 +307,7 @@ export class DashboardService {
     // Build query - either for single restaurant or all restaurants
     let query = client
       .from('lingtin_visit_records')
-      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript')
+      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript, audio_url')
       .eq('visit_date', date)
       .eq('status', 'processed');
 
@@ -340,6 +341,7 @@ export class DashboardService {
               managerQuestions: record.manager_questions || [],
               customerAnswers: record.customer_answers || [],
               transcript: record.corrected_transcript || '',
+              audioUrl: record.audio_url || null,
             };
             if (fb.sentiment === 'positive') {
               positive++;
@@ -589,6 +591,45 @@ export class DashboardService {
         total_visits: visits?.length || 0,
         avg_sentiment: avgSentiment !== null ? Math.round(avgSentiment * 100) / 100 : null,
       },
+    };
+  }
+
+  // Get cumulative motivation stats for a restaurant (all-time totals)
+  async getMotivationStats(restaurantId: string) {
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const DEFAULT_RESTAURANT_ID = '0b9e9031-4223-4124-b633-e3a853abfb8f';
+    const safeId = UUID_REGEX.test(restaurantId) ? restaurantId : DEFAULT_RESTAURANT_ID;
+
+    if (this.supabase.isMockMode()) {
+      return { total_visits: 156, positive_count: 139, resolved_issues: 23 };
+    }
+
+    const client = this.supabase.getClient();
+
+    // Run three counts in parallel
+    const [visitsResult, positiveResult, resolvedResult] = await Promise.all([
+      client
+        .from('lingtin_visit_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', safeId)
+        .eq('status', 'processed'),
+      client
+        .from('lingtin_visit_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', safeId)
+        .eq('status', 'processed')
+        .gte('sentiment_score', 0.8),
+      client
+        .from('lingtin_action_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', safeId)
+        .eq('status', 'resolved'),
+    ]);
+
+    return {
+      total_visits: visitsResult.count ?? 0,
+      positive_count: positiveResult.count ?? 0,
+      resolved_issues: resolvedResult.count ?? 0,
     };
   }
 }

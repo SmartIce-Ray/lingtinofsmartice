@@ -76,7 +76,7 @@ export function TableSelector({ value, onChange, disabled = false }: TableSelect
             key={letter}
             onClick={() => handleLetterClick(letter)}
             disabled={disabled}
-            className={`w-10 h-10 rounded-lg font-medium flex-shrink-0 transition-all ${
+            className={`w-11 h-11 rounded-lg font-medium flex-shrink-0 transition-all ${
               selectedLetter === letter
                 ? 'bg-primary-600 text-white shadow-md scale-105'
                 : 'bg-gray-100 text-gray-700 hover:bg-primary-100 hover:text-primary-600'
@@ -94,7 +94,7 @@ export function TableSelector({ value, onChange, disabled = false }: TableSelect
             key={num}
             onClick={() => handleNumberClick(num)}
             disabled={disabled}
-            className={`w-10 h-10 rounded-lg font-medium flex-shrink-0 transition-all ${
+            className={`w-11 h-11 rounded-lg font-medium flex-shrink-0 transition-all ${
               selectedNumber === num
                 ? 'bg-primary-600 text-white shadow-md scale-105'
                 : 'bg-gray-100 text-gray-700 hover:bg-primary-100 hover:text-primary-600'
@@ -105,17 +105,12 @@ export function TableSelector({ value, onChange, disabled = false }: TableSelect
         ))}
       </div>
 
-      {/* Selected Display */}
-      <div className="text-center mt-4">
-        <span className="text-gray-500">已选: </span>
-        <span
-          className={`font-bold text-lg ${
-            value ? 'text-primary-600' : 'text-gray-300'
-          }`}
-        >
-          {value || '--'}
-        </span>
-      </div>
+      {/* Selected Display - compact inline */}
+      {value && (
+        <p className="text-center mt-2 text-sm text-primary-600 font-medium">
+          {value} 桌
+        </p>
+      )}
     </div>
   );
 }

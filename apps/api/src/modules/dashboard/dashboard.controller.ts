@@ -85,6 +85,12 @@ export class DashboardController {
     );
   }
 
+  // GET /api/dashboard/motivation-stats - Cumulative stats for motivation banner
+  @Get('motivation-stats')
+  async getMotivationStats(@Query('restaurant_id') restaurantId: string) {
+    return this.dashboardService.getMotivationStats(restaurantId);
+  }
+
   // GET /api/dashboard/restaurant/:id - Get restaurant detail with visit records
   @Get('restaurant/:id')
   async getRestaurantDetail(

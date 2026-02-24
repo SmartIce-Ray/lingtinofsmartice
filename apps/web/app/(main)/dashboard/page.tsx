@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,6 +33,7 @@ interface FeedbackContext {
   managerQuestions: string[];
   customerAnswers: string[];
   transcript: string;
+  audioUrl?: string | null;
 }
 
 interface SentimentFeedback {
@@ -103,6 +104,40 @@ export default function DashboardPage() {
     rect: DOMRect;
   } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  // Audio playback state for feedback popover
+  const [playingVisitId, setPlayingVisitId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingVisitId(null);
+  }, []);
+
+  const handleAudioToggle = useCallback((visitId: string, audioUrl: string) => {
+    // If same audio is playing, pause it
+    if (playingVisitId === visitId) {
+      stopAudio();
+      return;
+    }
+    // Stop any currently playing audio
+    stopAudio();
+    // Play new audio
+    const audio = new Audio(audioUrl);
+    audio.onended = () => {
+      setPlayingVisitId(null);
+      audioRef.current = null;
+    };
+    audio.onerror = () => {
+      setPlayingVisitId(null);
+      audioRef.current = null;
+    };
+    audio.play();
+    audioRef.current = audio;
+    setPlayingVisitId(visitId);
+  }, [playingVisitId, stopAudio]);
 
   // Get user's restaurant ID from auth context
   const { user } = useAuth();
@@ -139,12 +174,13 @@ export default function DashboardPage() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+        stopAudio();
         setSelectedFeedback(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [stopAudio]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -464,7 +500,7 @@ export default function DashboardPage() {
           >
           {/* Close button */}
           <button
-            onClick={() => setSelectedFeedback(null)}
+            onClick={() => { stopAudio(); setSelectedFeedback(null); }}
             className="absolute top-2 right-2 text-gray-400 hover:text-gray-600"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -486,7 +522,21 @@ export default function DashboardPage() {
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {selectedFeedback.feedback.contexts.map((ctx, idx) => (
                 <div key={idx} className="border-l-2 border-gray-200 pl-3">
-                  <div className="text-xs text-gray-400 mb-1">{ctx.tableId}桌</div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-400">{ctx.tableId}桌</span>
+                    {ctx.audioUrl && (
+                      <button
+                        onClick={() => handleAudioToggle(ctx.visitId, ctx.audioUrl!)}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
+                          playingVisitId === ctx.visitId
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                        }`}
+                      >
+                        {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 原声'}
+                      </button>
+                    )}
+                  </div>
 
                   {/* Manager question */}
                   {ctx.managerQuestions.length > 0 && (

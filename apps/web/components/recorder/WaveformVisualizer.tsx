@@ -108,7 +108,7 @@ export function WaveformVisualizer({
   }, [analyserData, isRecording, isPaused]);
 
   return (
-    <div className="relative w-full h-32 bg-gray-50 rounded-xl overflow-hidden">
+    <div className={`relative w-full bg-gray-50 rounded-xl overflow-hidden transition-all duration-300 ${isRecording ? 'h-32' : 'h-8'}`}>
       <canvas
         ref={canvasRef}
         className="w-full h-full"
