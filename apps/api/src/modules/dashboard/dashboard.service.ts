@@ -612,12 +612,12 @@ export class DashboardService {
         .from('lingtin_visit_records')
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', safeId)
-        .eq('status', 'completed'),
+        .eq('status', 'processed'),
       client
         .from('lingtin_visit_records')
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', safeId)
-        .eq('status', 'completed')
+        .eq('status', 'processed')
         .gte('sentiment_score', 0.8),
       client
         .from('lingtin_action_items')
