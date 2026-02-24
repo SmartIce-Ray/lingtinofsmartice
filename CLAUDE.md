@@ -66,10 +66,40 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **Supabase UUID 查询**：所有 service 方法中 `restaurant_id` 参数必须做 UUID 校验，非法值回退 `DEFAULT_RESTAURANT_ID`
 - **产品使用指南同步更新** — 每次功能迭代后，同步更新 `docs/user-guides/` 对应角色的指南，记录功能变更与最佳实践。**按角色分文件**（`store-manager.md`、`management.md`、`staff.md`），**每个角色一份完整文件，不再拆分成子目录或多个小文件**
 - **DashScope API 注意** — 提交用 `/api/v1/services/audio/asr/transcription`，轮询用 `/api/v1/tasks/{id}`，两个路径不同；`transcription_url` 是预签名 OSS URL，不需要 Authorization header
-- **STT 回退模式** — DashScope 优先，失败或未配置自动回退讯飞；`extractTranscript` 失败必须抛异常（不能返回空串），否则回退不触发
+- **STT 回退模式** — DashScope 优先，失败或未配置自动回退讯飞；`extractTranscript` 失败必须抛异常（不能返回空串），否则回退不触发；讯飞收到非零 code 时若已有部分结果则 resolve 而非 reject（防止 11203 等错误丢弃已转写内容）
+- **AI 分析模型** — OpenRouter → DeepSeek Chat V3（`deepseek/deepseek-chat-v3-0324`），无 fallback；中国区部署不可用 Google Gemini / Anthropic Claude / OpenAI
 - **AI JSON 解析** — OpenRouter 返回的 JSON 必须用 try-catch 包裹 `JSON.parse`，catch 中记录原始内容前 200 字用于调试
+- **处理流水线** — STT(DashScope→讯飞) → 本地清洗(硬编码规则，去语气词) → AI 分析(DeepSeek) → 存库；三步独立，任一步失败不影响已完成步骤的 log，audio_url 始终保留可重跑
 - **面向店长的内容** — 讲功能价值时站在店长角度（省时间、不遗漏、被认可），不要暗示"做给老板看"或"被老板监控"。强调"你的用心会被看见"，而非"老板能看到你的数据"
 - **已知技术债（PR #5 审查）** — ① `saveResults` 方法 DB 写入失败未抛异常 ② ~~`QuestionTemplatesService`~~ / `DailySummaryController` 缺 UUID 校验 ③ API 响应未统一 `{data, message}` 格式 ④ 前端 `onError` 回调未通知用户。新增代码应避免重复这些模式
+
+## 技术债追踪
+
+> 目标：**稳定的 STT 转录服务** + **稳定的文本打标（AI 分析）服务**
+
+### STT 转录层
+
+| 优先级 | 债务 | 描述 | 状态 |
+|--------|------|------|------|
+| 🔴 高 | DashScope Paraformer-v2 未开通 | 当前 `DASHSCOPE_API_KEY` 存在但 Paraformer 服务未激活，每次都 fallback 到讯飞 | 待解决：让朋友在 DashScope 控制台开通 Paraformer-v2 服务 |
+| 🔴 高 | 讯飞 11203 license 失败 | 方言大模型 license 校验失败，空音频时 STT 完全不可用 | 待解决：去讯飞控制台检查方言大模型开通/计费状态 |
+| 🟡 中 | STT 无健康检测 | 服务启动时不验证 STT 凭证是否有效，失败只在运行时暴露 | 待优化 |
+| 🟡 中 | 讯飞只有单一 fallback | DashScope 挂了只有讯飞一条路，无第二备用 | 待优化：可考虑加阿里云 NLS 或其他 STT 作为第三备用 |
+
+### AI 分析层
+
+| 优先级 | 债务 | 描述 | 状态 |
+|--------|------|------|------|
+| 🟡 中 | AI 分析无 fallback | OpenRouter/DeepSeek 挂了没有备用模型，直接 error | 待优化：可加 `qwen/qwen-turbo` 作为备用（同一 key 可用） |
+| 🟡 中 | `saveResults` 写库失败不抛异常 | DB 写入出错只打 log，不触发重试或报警 | 待修复（PR #5 遗留） |
+| 🟢 低 | 本地清洗规则硬编码 | 去语气词逻辑写死在代码里，无法动态配置 | 暂不处理 |
+
+### 可观测性
+
+| 优先级 | 债务 | 描述 | 状态 |
+|--------|------|------|------|
+| 🟡 中 | 无告警机制 | STT/AI 大规模失败时无主动通知（只能事后看日志） | 待优化 |
+| 🟡 中 | 52 条历史 error 记录待重跑 | 昨日录音因 OpenRouter 403 + 讯飞 11203 全部失败，audio_url 保留，待 STT 修复后批量重处理 | 待执行 |
 - **版本号更新** — 每次功能迭代提交前，必须更新 `apps/web/components/layout/UpdatePrompt.tsx` 中的 `APP_VERSION`（递增 patch 版本）和 `BUILD_DATE`（当天日期）
 - **DATABASE.md 与实际表有差异** — `lingtin_visit_records` 实际含 `feedbacks JSONB` 列（AI 评价短语列表），但 DATABASE.md 未记录。修改 schema 前先查实际表结构
 
