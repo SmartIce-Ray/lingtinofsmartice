@@ -40,7 +40,7 @@ const CLOSING_TIPS = [
 
 export function QuestionPrompt({ questions, visible }: QuestionPromptProps) {
   const [collapsed, setCollapsed] = useState(true);
-  const [closingOpen, setClosingOpen] = useState(false);
+  const [closingOpen, setClosingOpen] = useState(true);
 
   if (!visible || questions.length === 0) return null;
 
@@ -101,7 +101,7 @@ export function QuestionPrompt({ questions, visible }: QuestionPromptProps) {
                 e.stopPropagation();
                 setClosingOpen(!closingOpen);
               }}
-              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-500"
+              className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:text-amber-700"
             >
               <svg
                 className={`w-3 h-3 transition-transform ${closingOpen ? 'rotate-90' : ''}`}
@@ -116,8 +116,8 @@ export function QuestionPrompt({ questions, visible }: QuestionPromptProps) {
             {closingOpen && (
               <ol className="mt-1.5 space-y-1.5 ml-4">
                 {CLOSING_TIPS.map((tip, idx) => (
-                  <li key={idx} className="text-xs text-gray-400 leading-relaxed">
-                    <span className="text-gray-500 font-medium">{tip.scenario}</span>
+                  <li key={idx} className="text-xs text-amber-700/70 leading-relaxed">
+                    <span className="text-amber-800 font-medium">{tip.scenario}</span>
                     <span className="mx-1">→</span>
                     <span className="italic">&ldquo;{tip.script}&rdquo;</span>
                   </li>
