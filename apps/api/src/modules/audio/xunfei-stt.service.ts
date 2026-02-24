@@ -1,5 +1,5 @@
 // 讯飞 Speech-to-Text Service - 方言识别大模型 (SLM)
-// v2.2 - Added mp4/m4a format detection for mobile Safari recordings
+// v2.3 - code !== 0 时若已有部分结果则 resolve 而非 reject，避免 11203 等非致命错误丢弃已转写内容
 // API文档: https://www.xfyun.cn/doc/spark/spark_slm_iat.html
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -186,7 +186,13 @@ export class XunfeiSttService {
           if (response.header.code !== 0) {
             clearTimeout(timeout);
             ws.close();
-            reject(new Error(`STT错误: ${response.header.code} - ${response.header.message}`));
+            // 若已有部分转写结果，优先使用已有内容而非直接报错
+            if (transcriptParts.length > 0) {
+              this.logger.warn(`STT code ${response.header.code} (${response.header.message})，已有内容 ${transcriptParts.join('').length} 字，使用部分结果`);
+              resolveWithResults('error-partial');
+            } else {
+              reject(new Error(`STT错误: ${response.header.code} - ${response.header.message}`));
+            }
             return;
           }
 
