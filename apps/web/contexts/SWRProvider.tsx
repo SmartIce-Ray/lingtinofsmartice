@@ -38,7 +38,9 @@ function createLocalStorageProvider(): SWRCache {
         const entries = Array.from(map.entries());
         // Only cache dashboard-related data, limit size
         const filteredEntries = entries.filter(([key]) =>
-          key.includes('/api/dashboard/') || key.includes('/api/audio/')
+          key.includes('/api/dashboard/') || key.includes('/api/audio/') ||
+          key.includes('/api/action-items') || key.includes('/api/meeting/') ||
+          key.includes('/api/daily-summary')
         ).slice(0, 50);
         localStorage.setItem(CACHE_KEY, JSON.stringify(filteredEntries));
       } catch {

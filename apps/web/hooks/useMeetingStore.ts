@@ -8,7 +8,7 @@ import { cancelProcessing } from '@/lib/backgroundProcessor';
 import { createClient } from '@/lib/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-export type MeetingType = 'pre_meal' | 'daily_review' | 'weekly';
+export type MeetingType = 'pre_meal' | 'daily_review' | 'weekly' | 'kitchen_meeting';
 
 export type MeetingStatus =
   | 'saved'

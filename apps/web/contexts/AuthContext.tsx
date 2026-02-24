@@ -81,9 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_KEY, data.access_token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
 
-    // Route based on role: administrator goes to admin dashboard, others to recorder
+    // Route based on role
     if (data.user.roleCode === 'administrator') {
       router.push('/admin/dashboard');
+    } else if (data.user.roleCode === 'head_chef' || data.user.roleCode === 'chef') {
+      router.push('/chef/dashboard');
     } else {
       router.push('/recorder');
     }

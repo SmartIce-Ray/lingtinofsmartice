@@ -22,6 +22,8 @@ export default function HomePage() {
     // Redirect based on role
     if (user.roleCode === 'administrator') {
       router.replace('/admin/dashboard');
+    } else if (user.roleCode === 'head_chef' || user.roleCode === 'chef') {
+      router.replace('/chef/dashboard');
     } else {
       router.replace('/recorder');
     }

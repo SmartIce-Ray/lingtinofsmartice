@@ -6,6 +6,9 @@ import { SupabaseService } from '../../common/supabase/supabase.service';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+const DEFAULT_RESTAURANT_ID = '0b9e9031-4223-4124-b633-e3a853abfb8f';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface EvidenceItem {
   visitId: string;
   tableId: string;
@@ -70,6 +73,58 @@ export class ActionItemsService {
     const sorted = (data || []).sort(
       (a, b) => (priorityWeight[a.priority] ?? 3) - (priorityWeight[b.priority] ?? 3),
     );
+
+    return { actions: sorted };
+  }
+
+  // Get all pending/acknowledged action items across all dates (for kitchen meeting reminders)
+  async getPendingActionItems(restaurantId: string, limit = 20) {
+    const safeRestaurantId = UUID_REGEX.test(restaurantId) ? restaurantId : DEFAULT_RESTAURANT_ID;
+
+    if (this.supabase.isMockMode()) {
+      return {
+        actions: [
+          {
+            id: 'mock-pending-1', restaurant_id: safeRestaurantId, action_date: '2026-02-24',
+            category: 'dish_quality', priority: 'high', status: 'pending',
+            suggestion_text: '清蒸鲈鱼偏咸，建议减盐',
+            evidence: [{ visitId: 'mock-v1', tableId: 'A3', feedback: '偏咸', sentiment: 'negative' }],
+          },
+          {
+            id: 'mock-pending-2', restaurant_id: safeRestaurantId, action_date: '2026-02-24',
+            category: 'dish_quality', priority: 'medium', status: 'pending',
+            suggestion_text: '午市出菜速度慢，优化流程',
+            evidence: [{ visitId: 'mock-v2', tableId: 'A5', feedback: '上菜慢', sentiment: 'negative' }],
+          },
+          {
+            id: 'mock-pending-3', restaurant_id: safeRestaurantId, action_date: '2026-02-22',
+            category: 'dish_quality', priority: 'medium', status: 'acknowledged',
+            suggestion_text: '重新评估调整油焖虾口味',
+            evidence: [{ visitId: 'mock-v3', tableId: 'B2', feedback: '口味不对', sentiment: 'negative' }],
+          },
+        ],
+      };
+    }
+
+    const client = this.supabase.getClient();
+
+    const { data, error } = await client
+      .from('lingtin_action_items')
+      .select('*')
+      .eq('restaurant_id', safeRestaurantId)
+      .in('status', ['pending', 'acknowledged'])
+      .order('action_date', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+
+    // Sort by priority weight (high first), then by date (newest first)
+    const priorityWeight: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    const sorted = (data || []).sort((a, b) => {
+      const pw = (priorityWeight[a.priority] ?? 3) - (priorityWeight[b.priority] ?? 3);
+      if (pw !== 0) return pw;
+      return (b.action_date || '').localeCompare(a.action_date || '');
+    });
 
     return { actions: sorted };
   }

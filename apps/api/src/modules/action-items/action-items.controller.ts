@@ -9,6 +9,18 @@ import { getChinaDateString } from '../../common/utils/date';
 export class ActionItemsController {
   constructor(private readonly actionItemsService: ActionItemsService) {}
 
+  // GET /api/action-items/pending — all pending/acknowledged items across dates
+  @Get('pending')
+  async getPendingActionItems(
+    @Query('restaurant_id') restaurantId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.actionItemsService.getPendingActionItems(
+      restaurantId,
+      limit ? parseInt(limit, 10) : 20,
+    );
+  }
+
   // GET /api/action-items — list action items for a date
   @Get()
   async getActionItems(
