@@ -358,7 +358,7 @@ this.logger.log(`Messages in context: ${messages.length}`);
     }
 
     const requestBody = {
-      model: 'google/gemini-2.5-flash',
+      model: 'deepseek/deepseek-chat-v3-0324',
       max_tokens: 2048,
       messages: [
         { role: 'system', content: systemPrompt },

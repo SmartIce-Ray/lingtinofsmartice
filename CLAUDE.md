@@ -11,7 +11,7 @@
 - **前端**: Next.js 14 + PWA + Tailwind CSS + SWR
 - **后端**: NestJS (Node.js)
 - **数据库**: Supabase (PostgreSQL)
-- **AI**: DashScope Paraformer-v2 STT (讯飞回退) + Gemini 2.5 Flash (via OpenRouter)
+- **AI**: DashScope Paraformer-v2 STT (讯飞回退) + DeepSeek Chat V3 (via OpenRouter)
 - **存储**: Supabase Storage
 - **认证**: Supabase Auth + JWT
 

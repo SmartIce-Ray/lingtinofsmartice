@@ -374,7 +374,7 @@ export class AiProcessingService {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'deepseek/deepseek-chat-v3-0324',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `对话文本：\n${transcript}` },
