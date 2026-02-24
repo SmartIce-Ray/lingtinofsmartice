@@ -18,6 +18,7 @@ export interface FeedbackWithContext {
   managerQuestions: string[];
   customerAnswers: string[];
   transcript: string;
+  audioUrl: string | null;
 }
 
 @Injectable()
@@ -306,7 +307,7 @@ export class DashboardService {
     // Build query - either for single restaurant or all restaurants
     let query = client
       .from('lingtin_visit_records')
-      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript')
+      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript, audio_url')
       .eq('visit_date', date)
       .eq('status', 'processed');
 
@@ -340,6 +341,7 @@ export class DashboardService {
               managerQuestions: record.manager_questions || [],
               customerAnswers: record.customer_answers || [],
               transcript: record.corrected_transcript || '',
+              audioUrl: record.audio_url || null,
             };
             if (fb.sentiment === 'positive') {
               positive++;
