@@ -98,6 +98,12 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 | 🟡 中 | `saveResults` 写库失败不抛异常 | DB 写入出错只打 log，不触发重试或报警 | 待修复（PR #5 遗留） |
 | 🟢 低 | 本地清洗规则硬编码 | 去语气词逻辑写死在代码里，无法动态配置 | 暂不处理 |
 
+### 数据模型
+
+| 优先级 | 债务 | 描述 | 状态 |
+|--------|------|------|------|
+| 🟢 低 | `lingtin_dish_mentions` 表废弃 | AI 流水线只写 `visit_records.feedbacks` JSONB，dish_mentions 表从未被写入。v1.3.3 起所有读取已改用 feedbacks，表暂保留不删 | 已标记废弃 |
+
 ### 可观测性
 
 | 优先级 | 债务 | 描述 | 状态 |
@@ -156,7 +162,7 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 
 ## 数据库概览
 
-核心表：`lingtin_visit_records`、`lingtin_dish_mentions`、`lingtin_table_sessions`、`lingtin_action_items`、`lingtin_meeting_records`、`lingtin_question_templates`
+核心表：`lingtin_visit_records`、`lingtin_dish_mentions`（废弃，数据已由 feedbacks JSONB 替代）、`lingtin_table_sessions`、`lingtin_action_items`、`lingtin_meeting_records`、`lingtin_question_templates`
 只读引用：`master_restaurant`、`master_employee`、`mt_dish_sales`
 视图：`lingtin_dishname_view`
 
@@ -190,7 +196,7 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
+| v1.4.0 管理层会议功能 | feat/meeting-recording | ✅ 代码完成，构建通过，待用户测试 | 新增：会议Tab+洞察合并+录制页+admin-overview API |
 | PR #7: 厨师长角色 + CHANGELOG + 综合产品指南 | feat/meeting-recording | PR 已创建，待 Jeremy merge | PR: https://github.com/JeremyDong22/lingtinofsmartice/pull/7 |
-| 文档同步 v1.3.1 + v1.3.2 | feat/meeting-recording | ✅ 完成 | PRODUCT-GUIDE.md 新增管理层章节 + management.md 重写（4页面）+ 店长/厨师长/README 更新 |
 | 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 无效。线上 Zeabur 有正确 key 所以生产正常 |
 | 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API，本地后端因 service key 无效运行在 MOCK MODE |

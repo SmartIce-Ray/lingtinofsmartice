@@ -7,6 +7,32 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-02-26
+
+### 新增 (Added)
+- 管理层「会议」Tab — 底部导航新增第三个 Tab，查看跨门店会议纪要
+- 管理层会议概览页 `/admin/meetings` — 按日期浏览各门店会议，支持"我的会议"折叠区
+- 管理层会议录制页 `/admin/meetings/record` — 全屏录制模式，支持经营会/店长沟通两种类型
+- 后端 `GET /api/meeting/admin-overview` 端点 — 跨门店会议聚合查询，按门店分组+我的会议分离
+- 新增会议类型：`cross_store_review`（跨门店经营分析会）、`one_on_one`（与店长一对一沟通）
+- AI 会议纪要针对新类型优化 — 经营会侧重跨店对比和统一决策，沟通会侧重根因分析和承诺事项
+- 智能议题卡 — 录制页展示昨日简报问题，辅助管理层会议讨论
+
+### 变更 (Changed)
+- 管理层底部导航 4 Tab → 新 4 Tab：总览 / 洞察 / 会议 / 智库（原顾客洞察+产品洞察合并为洞察）
+- 洞察页 `/admin/insights` 合并顾客洞察和产品洞察，分段控制切换
+- `/admin/question-templates` 和 `/admin/staff-questions` 重定向至 `/admin/insights`
+
+## [1.3.3] - 2026-02-26
+
+### 修复 (Fixed)
+- 管理层总览/门店网格默认查「昨日」数据 — 修复前端标题说"昨日"但后端查"今日"导致凌晨/上午无数据的问题
+- 厨师长菜品排行改用 `feedbacks` JSONB 提取 — 弃用空表 `lingtin_dish_mentions`，直接从 AI 流水线实际写入的 feedbacks 读取
+- AI 流水线补充 `keywords` 字段保存 — 修复门店网格关键词云始终为空的问题
+
+### 变更 (Changed)
+- `lingtin_dish_mentions` 表标记为废弃（数据已由 `feedbacks` JSONB 替代，表暂不删除）
+
 ## [1.3.2] - 2026-02-26
 
 ### 新增 (Added)

@@ -461,6 +461,11 @@ export class AiProcessingService {
 
     const client = this.supabase.getClient();
 
+    // Extract keywords from feedbacks for keyword cloud display
+    const keywords = (result.feedbacks || [])
+      .map(fb => fb.text)
+      .filter(Boolean);
+
     // Update visit record with simplified MVP fields
     const { error: updateError } = await client
       .from('lingtin_visit_records')
@@ -470,6 +475,7 @@ export class AiProcessingService {
         ai_summary: result.aiSummary,
         sentiment_score: result.sentimentScore,
         feedbacks: result.feedbacks,
+        keywords,
         manager_questions: result.managerQuestions,
         customer_answers: result.customerAnswers,
         status: 'processed',

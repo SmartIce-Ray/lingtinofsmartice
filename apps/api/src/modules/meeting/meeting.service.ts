@@ -81,6 +81,118 @@ export class MeetingService {
     };
   }
 
+  async getAdminOverview(date?: string, employeeId?: string) {
+    const client = this.supabase.getClient();
+    // Default to yesterday
+    const targetDate = date || (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().split('T')[0];
+    })();
+
+    // 1. Get all active restaurants
+    const { data: restaurants, error: restErr } = await client
+      .from('master_restaurant')
+      .select('id, restaurant_name')
+      .order('restaurant_name');
+
+    if (restErr) {
+      this.logger.error(`Failed to fetch restaurants: ${restErr.message}`);
+      throw restErr;
+    }
+
+    // 2. Get all meetings for the target date (cross-store)
+    const { data: meetings, error: meetErr } = await client
+      .from('lingtin_meeting_records')
+      .select('id, restaurant_id, employee_id, meeting_type, status, ai_summary, action_items, key_decisions, audio_url, duration_seconds, created_at')
+      .eq('meeting_date', targetDate)
+      .order('created_at', { ascending: false });
+
+    if (meetErr) {
+      this.logger.error(`Failed to fetch meetings: ${meetErr.message}`);
+      throw meetErr;
+    }
+
+    const allMeetings = meetings || [];
+
+    // 3. Group meetings by restaurant_id
+    const meetingsByStore = new Map<string, typeof allMeetings>();
+    for (const m of allMeetings) {
+      const list = meetingsByStore.get(m.restaurant_id) || [];
+      list.push(m);
+      meetingsByStore.set(m.restaurant_id, list);
+    }
+
+    // 4. For stores without meetings, find their last meeting date
+    const storesWithoutMeetings = (restaurants || []).filter(r => !meetingsByStore.has(r.id));
+    const lastMeetingDates = new Map<string, string | null>();
+
+    if (storesWithoutMeetings.length > 0) {
+      for (const store of storesWithoutMeetings) {
+        const { data: lastMeeting } = await client
+          .from('lingtin_meeting_records')
+          .select('meeting_date')
+          .eq('restaurant_id', store.id)
+          .order('meeting_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        lastMeetingDates.set(store.id, lastMeeting?.meeting_date || null);
+      }
+    }
+
+    // 5. Build store list
+    const stores = (restaurants || []).map(r => {
+      const storeMeetings = meetingsByStore.get(r.id) || [];
+      return {
+        id: r.id,
+        name: r.restaurant_name,
+        meetings: storeMeetings.map(m => ({
+          id: m.id,
+          meeting_type: m.meeting_type,
+          duration_seconds: m.duration_seconds,
+          ai_summary: m.ai_summary,
+          action_items: m.action_items,
+          key_decisions: m.key_decisions,
+          status: m.status,
+          audio_url: m.audio_url,
+          created_at: m.created_at,
+        })),
+        last_meeting_date: storeMeetings.length > 0 ? targetDate : (lastMeetingDates.get(r.id) || null),
+      };
+    });
+
+    // 6. Separate "my meetings" if employeeId provided
+    const myMeetings = employeeId
+      ? allMeetings
+          .filter(m => m.employee_id === employeeId)
+          .map(m => ({
+            id: m.id,
+            meeting_type: m.meeting_type,
+            duration_seconds: m.duration_seconds,
+            ai_summary: m.ai_summary,
+            action_items: m.action_items,
+            key_decisions: m.key_decisions,
+            status: m.status,
+            audio_url: m.audio_url,
+            created_at: m.created_at,
+          }))
+      : [];
+
+    const storesWithMeetings = stores.filter(s => s.meetings.length > 0).length;
+
+    return {
+      date: targetDate,
+      summary: {
+        total_meetings: allMeetings.length,
+        stores_with_meetings: storesWithMeetings,
+        stores_without: stores.length - storesWithMeetings,
+      },
+      stores,
+      my_meetings: myMeetings,
+    };
+  }
+
   async getTodayMeetings(restaurantId: string, date?: string) {
     const client = this.supabase.getClient();
     const targetDate = date || getChinaDateString();

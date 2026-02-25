@@ -11,6 +11,15 @@ export function getChinaDateString(): string {
 }
 
 /**
+ * Get yesterday's date string in China timezone (YYYY-MM-DD format)
+ */
+export function getYesterdayChinaDateString(): string {
+  const now = new Date();
+  now.setDate(now.getDate() - 1);
+  return now.toLocaleDateString('sv-SE', { timeZone: CHINA_TIMEZONE });
+}
+
+/**
  * Convert a Date object to China timezone date string (YYYY-MM-DD format)
  */
 export function toChinaDateString(date: Date): string {

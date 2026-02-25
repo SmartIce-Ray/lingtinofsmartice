@@ -15,6 +15,8 @@ const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
   daily_review: '每日复盘',
   weekly: '周例会',
   kitchen_meeting: '厨房会议',
+  cross_store_review: '经营会',
+  one_on_one: '店长沟通',
 };
 
 function formatDateTime(timestamp: number): string {

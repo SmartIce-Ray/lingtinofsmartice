@@ -18,6 +18,8 @@ const MEETING_TYPE_LABELS: Record<MeetingType, { label: string; icon: string }> 
   daily_review: { label: '每日复盘', icon: '📋' },
   weekly: { label: '周例会', icon: '📅' },
   kitchen_meeting: { label: '厨房会议', icon: '🔪' },
+  cross_store_review: { label: '经营会', icon: '🏢' },
+  one_on_one: { label: '店长沟通', icon: '👤' },
 };
 
 function formatTime(timestamp: number): string {

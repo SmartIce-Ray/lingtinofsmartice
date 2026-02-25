@@ -6,7 +6,7 @@
 
 import { Controller, Get, Query, Param } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
-import { getChinaDateString } from '../../common/utils/date';
+import { getChinaDateString, getYesterdayChinaDateString } from '../../common/utils/date';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -15,7 +15,7 @@ export class DashboardController {
   // GET /api/dashboard/briefing - Admin daily briefing with anomaly detection
   @Get('briefing')
   async getBriefing(@Query('date') date?: string) {
-    return this.dashboardService.getBriefing(date || getChinaDateString());
+    return this.dashboardService.getBriefing(date || getYesterdayChinaDateString());
   }
 
   // GET /api/dashboard/restaurants - Get all restaurants for admin multi-store view
@@ -27,7 +27,7 @@ export class DashboardController {
   // GET /api/dashboard/restaurants-overview - Get all restaurants with sentiment scores
   @Get('restaurants-overview')
   async getRestaurantsOverview(@Query('date') date?: string) {
-    return this.dashboardService.getRestaurantsOverview(date || getChinaDateString());
+    return this.dashboardService.getRestaurantsOverview(date || getYesterdayChinaDateString());
   }
 
   // GET /api/dashboard/coverage

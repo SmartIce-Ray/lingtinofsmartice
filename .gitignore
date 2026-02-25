@@ -44,3 +44,6 @@ supabase/.temp/
 
 # MCP config (contains project refs)
 .mcp.json
+
+# Dev-only mock data (never commit)
+**/dev-mock-data.*
