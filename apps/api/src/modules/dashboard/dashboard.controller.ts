@@ -92,6 +92,18 @@ export class DashboardController {
     );
   }
 
+  // GET /api/dashboard/suggestions - Customer suggestions aggregated from feedbacks
+  @Get('suggestions')
+  async getSuggestions(
+    @Query('restaurant_id') restaurantId: string,
+    @Query('days') days?: string,
+  ) {
+    return this.dashboardService.getSuggestions(
+      restaurantId,
+      parseInt(days || '7', 10),
+    );
+  }
+
   // GET /api/dashboard/motivation-stats - Cumulative stats for motivation banner
   @Get('motivation-stats')
   async getMotivationStats(@Query('restaurant_id') restaurantId: string) {

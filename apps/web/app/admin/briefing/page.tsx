@@ -36,6 +36,24 @@ interface BriefingResponse {
   avg_coverage: number;
 }
 
+interface SuggestionEvidence {
+  tableId: string;
+  audioUrl: string | null;
+  restaurantName: string;
+  restaurantId: string;
+}
+
+interface SuggestionItem {
+  text: string;
+  count: number;
+  restaurants: string[];
+  evidence: SuggestionEvidence[];
+}
+
+interface SuggestionsResponse {
+  suggestions: SuggestionItem[];
+}
+
 // Category icon map
 const CATEGORY_ICONS: Record<string, string> = {
   dish_quality: '🍳',
@@ -83,6 +101,8 @@ export default function AdminBriefingPage() {
 
   // Fetch briefing data
   const { data, isLoading } = useSWR<BriefingResponse>('/api/dashboard/briefing');
+  // Fetch customer suggestions (7-day rolling)
+  const { data: suggestionsData } = useSWR<SuggestionsResponse>('/api/dashboard/suggestions?restaurant_id=all&days=7');
 
   const userName = user?.employeeName || user?.username || '您';
   const greeting = data?.greeting || '您好';
@@ -91,6 +111,7 @@ export default function AdminBriefingPage() {
   const restaurantCount = data?.restaurant_count ?? 0;
   const avgSentiment = data?.avg_sentiment;
   const avgCoverage = data?.avg_coverage ?? 0;
+  const suggestions = suggestionsData?.suggestions ?? [];
 
   // Format today's date
   const today = new Date();
@@ -182,6 +203,53 @@ export default function AdminBriefingPage() {
                 平均情绪 {avgSentiment.toFixed(2)} · 平均覆盖率 {avgCoverage}%
               </p>
             )}
+          </div>
+        )}
+
+        {/* Customer Suggestions (7-day rolling) */}
+        {!isLoading && suggestions.length > 0 && (
+          <div className="bg-white rounded-xl overflow-hidden">
+            <div className="p-4 pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">💡</span>
+                  <span className="text-sm font-semibold text-gray-900">顾客建议 · 近 7 天</span>
+                </div>
+                <span className="text-xs text-gray-400">{suggestions.length} 条</span>
+              </div>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {suggestions.map((item, idx) => (
+                <div key={idx} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-sm font-medium text-gray-800">
+                      {item.text}
+                    </span>
+                    <span className="flex-shrink-0 text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                      ×{item.count}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-1.5">
+                    来自：{item.restaurants.filter(Boolean).join('、') || '未知门店'}
+                  </p>
+                  {item.evidence.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>
+                        {item.evidence[0].restaurantName || '门店'} · {item.evidence[0].tableId}桌
+                      </span>
+                      {item.evidence[0].audioUrl && (
+                        <button
+                          onClick={() => handleAudioToggle(`suggestion-${idx}`, item.evidence[0].audioUrl!)}
+                          className="text-primary-600 font-medium"
+                        >
+                          {playingKey === `suggestion-${idx}` ? '⏸ 暂停' : '▶ 原声'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

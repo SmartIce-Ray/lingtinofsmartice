@@ -68,6 +68,17 @@ interface DishRankingResponse {
   dishes: DishRanking[];
 }
 
+interface SuggestionItem {
+  text: string;
+  count: number;
+  restaurants: string[];
+  evidence: { tableId: string; audioUrl: string | null; restaurantName: string; restaurantId: string }[];
+}
+
+interface SuggestionsResponse {
+  suggestions: SuggestionItem[];
+}
+
 // Response types for SWR
 interface CoverageResponse {
   periods: CoveragePeriod[];
@@ -235,12 +246,16 @@ export default function DashboardPage() {
   const { data: dishData, isLoading: dishLoading } = useSWR<DishRankingResponse>(
     params ? `/api/dashboard/dish-ranking?${params}` : null
   );
+  const { data: suggestionsData } = useSWR<SuggestionsResponse>(
+    restaurantId ? `/api/dashboard/suggestions?restaurant_id=${restaurantId}&days=7` : null
+  );
 
   // Derived data with defaults
   const coverage = coverageData ?? { periods: [] };
   const sentiment = sentimentData ?? null;
   const managerQuestions = highlightsData?.questions ?? [];
   const dishes = dishData?.dishes ?? [];
+  const suggestions = suggestionsData?.suggestions ?? [];
   const loading = coverageLoading || sentimentLoading || highlightsLoading || dishLoading;
 
   // Close popover when clicking outside
@@ -453,6 +468,32 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2 text-green-600 mb-3 bg-green-50 rounded-lg p-3">
                   <span>✅</span>
                   <span className="text-sm font-medium">今日无需特别关注的问题</span>
+                </div>
+              )}
+
+              {/* Customer suggestions */}
+              {suggestions.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-sm">💡</span>
+                    <span className="text-xs font-semibold text-gray-600">顾客建议</span>
+                    <span className="text-xs text-gray-400 ml-auto">近 7 天</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {suggestions.map((item, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between bg-purple-50/60 rounded-lg px-3 py-2"
+                      >
+                        <span className="text-sm text-gray-800">&ldquo;{item.text}&rdquo;</span>
+                        {item.count > 1 && (
+                          <span className="flex-shrink-0 text-xs font-semibold text-purple-600 ml-2">
+                            ×{item.count}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </>

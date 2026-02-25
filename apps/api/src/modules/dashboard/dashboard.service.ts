@@ -886,6 +886,89 @@ export class DashboardService {
     return '晚上好';
   }
 
+  // Get customer suggestions aggregated from feedbacks with sentiment==='suggestion'
+  // Supports restaurant_id=all (cross-restaurant) or single restaurant UUID
+  async getSuggestions(restaurantId: string, days: number) {
+    if (this.supabase.isMockMode()) {
+      return { suggestions: [] };
+    }
+
+    const client = this.supabase.getClient();
+
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+
+    let query = client
+      .from('lingtin_visit_records')
+      .select('id, restaurant_id, table_id, feedbacks, audio_url')
+      .gte('visit_date', toChinaDateString(startDate))
+      .lte('visit_date', toChinaDateString(endDate))
+      .eq('status', 'processed');
+
+    if (restaurantId !== 'all') {
+      query = query.eq('restaurant_id', restaurantId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Build restaurant name lookup if cross-restaurant
+    let restMap = new Map<string, string>();
+    if (restaurantId === 'all') {
+      const { data: restaurants } = await client
+        .from('master_restaurant')
+        .select('id, restaurant_name')
+        .eq('is_active', true);
+      restMap = new Map((restaurants || []).map(r => [r.id, r.restaurant_name]));
+    }
+
+    // Collect all suggestion feedbacks
+    const suggestionMap = new Map<string, {
+      count: number;
+      restaurants: Set<string>;
+      evidence: { tableId: string; audioUrl: string | null; restaurantName: string; restaurantId: string }[];
+    }>();
+
+    for (const record of (data || [])) {
+      const feedbacks = record.feedbacks || [];
+      for (const fb of feedbacks) {
+        if (typeof fb === 'object' && fb.sentiment === 'suggestion' && fb.text) {
+          const existing = suggestionMap.get(fb.text) || {
+            count: 0,
+            restaurants: new Set<string>(),
+            evidence: [],
+          };
+          existing.count++;
+          const restName = restMap.get(record.restaurant_id) || '';
+          existing.restaurants.add(restName || record.restaurant_id);
+          if (existing.evidence.length < 3) {
+            existing.evidence.push({
+              tableId: record.table_id,
+              audioUrl: record.audio_url || null,
+              restaurantName: restName,
+              restaurantId: record.restaurant_id,
+            });
+          }
+          suggestionMap.set(fb.text, existing);
+        }
+      }
+    }
+
+    // Sort by count descending
+    const suggestions = Array.from(suggestionMap.entries())
+      .map(([text, data]) => ({
+        text,
+        count: data.count,
+        restaurants: Array.from(data.restaurants),
+        evidence: data.evidence,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return { suggestions };
+  }
+
   // Get cumulative motivation stats for a restaurant (all-time totals)
   async getMotivationStats(restaurantId: string) {
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
