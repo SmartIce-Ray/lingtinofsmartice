@@ -122,7 +122,10 @@ export class MeetingAiProcessingService {
     const meetingTypeLabel =
       meetingType === 'pre_meal' ? '餐前会' :
       meetingType === 'daily_review' ? '每日复盘总结会' :
-      meetingType === 'weekly' ? '周例会' : '会议';
+      meetingType === 'weekly' ? '周例会' :
+      meetingType === 'kitchen_meeting' ? '厨房会议' :
+      meetingType === 'cross_store_review' ? '跨门店经营分析会' :
+      meetingType === 'one_on_one' ? '与店长一对一沟通' : '会议';
 
     const systemPrompt = `你是餐饮门店会议记录助手。分析${meetingTypeLabel}的录音转写文本，生成结构化会议纪要。
 
@@ -146,7 +149,14 @@ export class MeetingAiProcessingService {
 3. keyDecisions: 提取会议中做出的重要决定
    - 只记录明确达成共识的决定，不记录讨论中的提议
 4. 如果某项为空，返回空数组[]
-5. 不要编造原文中没有的内容`;
+5. 不要编造原文中没有的内容
+6. 针对不同会议类型的侧重：
+   - 餐前会：关注当日注意事项、推荐菜品、人员分工
+   - 每日复盘：关注当日问题总结、表扬亮点、次日安排
+   - 周例会：关注本周趋势、数据对比、下周计划
+   - 厨房会议：关注出菜质量、备餐安排、食材管理
+   - 跨门店经营分析会：重点提取各店问题对比和跨店统一决策
+   - 与店长一对一沟通：重点提取问题根因分析和承诺事项`;
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
@@ -219,6 +229,8 @@ export class MeetingAiProcessingService {
 
       const sourceType = meetingType === 'daily_review' ? 'review_meeting'
         : meetingType === 'pre_meal' ? 'pre_meal_meeting'
+        : meetingType === 'cross_store_review' ? 'cross_store_meeting'
+        : meetingType === 'one_on_one' ? 'one_on_one_meeting'
         : 'meeting';
 
       const rows = actionItems.map(item => ({

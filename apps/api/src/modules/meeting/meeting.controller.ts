@@ -55,9 +55,9 @@ export class MeetingController {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
-    const VALID_MEETING_TYPES = ['pre_meal', 'daily_review', 'weekly'];
+    const VALID_MEETING_TYPES = ['pre_meal', 'daily_review', 'weekly', 'kitchen_meeting', 'cross_store_review', 'one_on_one'];
     if (!meetingType || !VALID_MEETING_TYPES.includes(meetingType)) {
-      throw new BadRequestException('meeting_type must be one of: pre_meal, daily_review, weekly');
+      throw new BadRequestException('meeting_type must be one of: pre_meal, daily_review, weekly, kitchen_meeting, cross_store_review, one_on_one');
     }
     if (!restaurantId) {
       throw new BadRequestException('restaurant_id is required');
@@ -113,6 +113,18 @@ export class MeetingController {
       }
       throw error;
     }
+  }
+
+  // GET /api/meeting/admin-overview - Cross-store meeting overview for admin
+  @Get('admin-overview')
+  async getAdminOverview(
+    @Query('date') date?: string,
+    @Query('employee_id') employeeId?: string,
+  ) {
+    this.logger.log(`▶ GET /meeting/admin-overview?date=${date || 'yesterday'}&employee_id=${employeeId || 'none'}`);
+    const result = await this.meetingService.getAdminOverview(date, employeeId);
+    this.logger.log(`◀ Admin overview: ${result.stores.length} stores, ${result.summary.total_meetings} meetings`);
+    return result;
   }
 
   // GET /api/meeting/today - Query by restaurant_id + date

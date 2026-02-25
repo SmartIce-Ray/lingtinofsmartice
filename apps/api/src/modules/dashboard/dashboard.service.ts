@@ -208,7 +208,8 @@ export class DashboardService {
     };
   }
 
-  // Get top mentioned dishes with sentiment
+  // Get top feedback items with sentiment (from feedbacks JSONB, not dish_mentions table)
+  // Note: lingtin_dish_mentions table is deprecated — AI pipeline only writes to feedbacks JSONB
   async getDishRanking(restaurantId: string, date: string, limit: number) {
     if (this.supabase.isMockMode()) {
       return {
@@ -223,73 +224,72 @@ export class DashboardService {
     }
     const client = this.supabase.getClient();
 
-    // Get all dish mentions for the date
+    // Get visit records with feedbacks JSONB (the actual data source)
     const { data, error } = await client
-      .from('lingtin_dish_mentions')
-      .select(
-        `
-        dish_name,
-        sentiment,
-        feedback_text,
-        lingtin_visit_records!inner(id, restaurant_id, visit_date, table_id, manager_questions, customer_answers, audio_url)
-      `,
-      )
-      .eq('lingtin_visit_records.restaurant_id', restaurantId)
-      .eq('lingtin_visit_records.visit_date', date);
+      .from('lingtin_visit_records')
+      .select('id, table_id, feedbacks, manager_questions, customer_answers, audio_url')
+      .eq('restaurant_id', restaurantId)
+      .eq('visit_date', date)
+      .eq('status', 'processed');
 
     if (error) throw error;
 
-    // Aggregate by dish
-    const dishMap = new Map<
+    // Aggregate feedbacks by text (each feedback item = one "mention")
+    const feedbackMap = new Map<
       string,
       {
         positive: number;
         negative: number;
         neutral: number;
-        negFeedbacks: Map<string, { count: number; contexts: NegContext[] }>;
+        negContexts: NegContext[];
       }
     >();
 
-    data?.forEach((mention) => {
-      const existing = dishMap.get(mention.dish_name) || {
-        positive: 0,
-        negative: 0,
-        neutral: 0,
-        negFeedbacks: new Map<string, { count: number; contexts: NegContext[] }>(),
-      };
-      existing[mention.sentiment as 'positive' | 'negative' | 'neutral']++;
-      if (mention.sentiment === 'negative' && mention.feedback_text) {
-        const visit = mention.lingtin_visit_records as any;
-        const fb = existing.negFeedbacks.get(mention.feedback_text) || {
-          count: 0,
-          contexts: [],
+    for (const record of (data || [])) {
+      const feedbacks = record.feedbacks || [];
+      for (const fb of feedbacks) {
+        if (typeof fb !== 'object' || !fb.text) continue;
+        // Skip suggestion-type feedbacks (not dish/service feedback)
+        if (fb.sentiment === 'suggestion') continue;
+
+        const text = fb.text;
+        const existing = feedbackMap.get(text) || {
+          positive: 0,
+          negative: 0,
+          neutral: 0,
+          negContexts: [],
         };
-        fb.count++;
-        if (fb.contexts.length < 3) {
-          fb.contexts.push({
-            visitId: visit?.id ?? '',
-            tableId: visit?.table_id ?? '',
-            managerQuestions: visit?.manager_questions ?? [],
-            customerAnswers: visit?.customer_answers ?? [],
-            audioUrl: visit?.audio_url ?? null,
+
+        const sentiment = fb.sentiment as 'positive' | 'negative' | 'neutral';
+        if (sentiment in existing) {
+          existing[sentiment]++;
+        }
+
+        if (sentiment === 'negative' && existing.negContexts.length < 3) {
+          existing.negContexts.push({
+            visitId: record.id,
+            tableId: record.table_id,
+            managerQuestions: record.manager_questions || [],
+            customerAnswers: record.customer_answers || [],
+            audioUrl: record.audio_url || null,
           });
         }
-        existing.negFeedbacks.set(mention.feedback_text, fb);
+
+        feedbackMap.set(text, existing);
       }
-      dishMap.set(mention.dish_name, existing);
-    });
+    }
 
     // Sort by total mentions and take top N
-    const dishes = Array.from(dishMap.entries())
-      .map(([name, counts]) => ({
-        dish_name: name,
+    const dishes = Array.from(feedbackMap.entries())
+      .map(([text, counts]) => ({
+        dish_name: text,
         mention_count: counts.positive + counts.negative + counts.neutral,
         positive: counts.positive,
         negative: counts.negative,
         neutral: counts.neutral,
-        negative_feedbacks: Array.from(counts.negFeedbacks.entries())
-          .map(([text, fb]) => ({ text, count: fb.count, contexts: fb.contexts }))
-          .sort((a, b) => b.count - a.count),
+        negative_feedbacks: counts.negContexts.length > 0
+          ? [{ text, count: counts.negative, contexts: counts.negContexts }]
+          : [],
       }))
       .sort((a, b) => b.mention_count - a.mention_count)
       .slice(0, limit);
