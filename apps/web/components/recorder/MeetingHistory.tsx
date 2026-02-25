@@ -17,6 +17,7 @@ const MEETING_TYPE_LABELS: Record<MeetingType, { label: string; icon: string }> 
   pre_meal: { label: '餐前会', icon: '🍳' },
   daily_review: { label: '每日复盘', icon: '📋' },
   weekly: { label: '周例会', icon: '📅' },
+  kitchen_meeting: { label: '厨房会议', icon: '🔪' },
 };
 
 function formatTime(timestamp: number): string {

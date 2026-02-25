@@ -21,6 +21,15 @@ export interface FeedbackWithContext {
   audioUrl: string | null;
 }
 
+// Interface for negative feedback conversation context (used in dish ranking)
+export interface NegContext {
+  visitId: string;
+  tableId: string;
+  managerQuestions: string[];
+  customerAnswers: string[];
+  audioUrl: string | null;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly supabase: SupabaseService) {}
@@ -186,11 +195,11 @@ export class DashboardService {
     if (this.supabase.isMockMode()) {
       return {
         dishes: [
-          { dish_name: '清蒸鲈鱼', mention_count: 8, positive: 6, negative: 1, neutral: 1 },
-          { dish_name: '红烧肉', mention_count: 6, positive: 4, negative: 2, neutral: 0 },
-          { dish_name: '宫保鸡丁', mention_count: 5, positive: 5, negative: 0, neutral: 0 },
-          { dish_name: '麻婆豆腐', mention_count: 4, positive: 2, negative: 1, neutral: 1 },
-          { dish_name: '糖醋排骨', mention_count: 3, positive: 1, negative: 2, neutral: 0 },
+          { dish_name: '清蒸鲈鱼', mention_count: 8, positive: 6, negative: 1, neutral: 1, negative_feedbacks: [{ text: '偏咸', count: 1, contexts: [{ visitId: 'mock-1', tableId: 'B4', managerQuestions: ['这道鱼觉得怎么样？'], customerAnswers: ['味道偏咸了，鱼倒是新鲜的'], audioUrl: null }] }] },
+          { dish_name: '红烧肉', mention_count: 6, positive: 4, negative: 2, neutral: 0, negative_feedbacks: [{ text: '太油腻', count: 1, contexts: [{ visitId: 'mock-2', tableId: 'A2', managerQuestions: ['红烧肉还合口味吗？'], customerAnswers: ['太油腻了，吃不了几块'], audioUrl: null }] }, { text: '肉太硬', count: 1, contexts: [{ visitId: 'mock-3', tableId: 'C1', managerQuestions: ['菜品口感怎么样？'], customerAnswers: ['红烧肉有点硬，没炖烂'], audioUrl: null }] }] },
+          { dish_name: '宫保鸡丁', mention_count: 5, positive: 5, negative: 0, neutral: 0, negative_feedbacks: [] },
+          { dish_name: '麻婆豆腐', mention_count: 4, positive: 2, negative: 1, neutral: 1, negative_feedbacks: [{ text: '不够辣', count: 1, contexts: [{ visitId: 'mock-4', tableId: 'B2', managerQuestions: ['麻婆豆腐辣度可以吗？'], customerAnswers: ['不够辣，我们四川人吃着没感觉'], audioUrl: null }] }] },
+          { dish_name: '糖醋排骨', mention_count: 3, positive: 1, negative: 2, neutral: 0, negative_feedbacks: [{ text: '太甜', count: 2, contexts: [{ visitId: 'mock-5', tableId: 'A5', managerQuestions: ['排骨味道还行吗？'], customerAnswers: ['太甜了，糖放多了'], audioUrl: null }, { visitId: 'mock-6', tableId: 'B1', managerQuestions: ['今天点的菜还满意吗？'], customerAnswers: ['糖醋排骨甜得发腻'], audioUrl: null }] }] },
         ].slice(0, limit),
       };
     }
@@ -203,7 +212,8 @@ export class DashboardService {
         `
         dish_name,
         sentiment,
-        lingtin_visit_records!inner(restaurant_id, visit_date)
+        feedback_text,
+        lingtin_visit_records!inner(id, restaurant_id, visit_date, table_id, manager_questions, customer_answers, audio_url)
       `,
       )
       .eq('lingtin_visit_records.restaurant_id', restaurantId)
@@ -214,7 +224,12 @@ export class DashboardService {
     // Aggregate by dish
     const dishMap = new Map<
       string,
-      { positive: number; negative: number; neutral: number }
+      {
+        positive: number;
+        negative: number;
+        neutral: number;
+        negFeedbacks: Map<string, { count: number; contexts: NegContext[] }>;
+      }
     >();
 
     data?.forEach((mention) => {
@@ -222,8 +237,27 @@ export class DashboardService {
         positive: 0,
         negative: 0,
         neutral: 0,
+        negFeedbacks: new Map<string, { count: number; contexts: NegContext[] }>(),
       };
       existing[mention.sentiment as 'positive' | 'negative' | 'neutral']++;
+      if (mention.sentiment === 'negative' && mention.feedback_text) {
+        const visit = mention.lingtin_visit_records as any;
+        const fb = existing.negFeedbacks.get(mention.feedback_text) || {
+          count: 0,
+          contexts: [],
+        };
+        fb.count++;
+        if (fb.contexts.length < 3) {
+          fb.contexts.push({
+            visitId: visit?.id ?? '',
+            tableId: visit?.table_id ?? '',
+            managerQuestions: visit?.manager_questions ?? [],
+            customerAnswers: visit?.customer_answers ?? [],
+            audioUrl: visit?.audio_url ?? null,
+          });
+        }
+        existing.negFeedbacks.set(mention.feedback_text, fb);
+      }
       dishMap.set(mention.dish_name, existing);
     });
 
@@ -235,6 +269,9 @@ export class DashboardService {
         positive: counts.positive,
         negative: counts.negative,
         neutral: counts.neutral,
+        negative_feedbacks: Array.from(counts.negFeedbacks.entries())
+          .map(([text, fb]) => ({ text, count: fb.count, contexts: fb.contexts }))
+          .sort((a, b) => b.count - a.count),
       }))
       .sort((a, b) => b.mention_count - a.mention_count)
       .slice(0, limit);

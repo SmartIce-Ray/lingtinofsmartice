@@ -14,6 +14,7 @@ const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
   pre_meal: '餐前会',
   daily_review: '每日复盘',
   weekly: '周例会',
+  kitchen_meeting: '厨房会议',
 };
 
 function formatDateTime(timestamp: number): string {

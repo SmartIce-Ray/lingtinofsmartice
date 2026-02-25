@@ -64,7 +64,9 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **API 响应**：统一 `{ data, message }` 格式
 - **认证 header**: 使用 `@/contexts/AuthContext` 导出的 `getAuthHeaders()`，不要在页面中重复定义
 - **Supabase UUID 查询**：所有 service 方法中 `restaurant_id` 参数必须做 UUID 校验，非法值回退 `DEFAULT_RESTAURANT_ID`
+- **角色路由模式** — `master_employee.role_code` 是自由文本字段，新增角色需改 3 处：`AuthContext.tsx` login 路由、`app/page.tsx` 首页重定向、新建 `app/<role>/layout.tsx` + `<Role>BottomNav`。当前角色：`administrator`→`/admin/`、`manager`→`/recorder`、`head_chef`→`/chef/`。API 端点无角色守卫，全靠 `restaurant_id` 隔离数据
 - **产品使用指南同步更新** — 每次功能迭代后，同步更新 `docs/user-guides/` 对应角色的指南，记录功能变更与最佳实践。**按角色分文件**（`store-manager.md`、`management.md`、`staff.md`），**每个角色一份完整文件，不再拆分成子目录或多个小文件**
+- **综合产品指南同步更新** — 每次功能迭代后，同步更新 `docs/PRODUCT-GUIDE.md`（综合使用指南 + 面向用户的版本更新记录）。新增角色时需在该文档中增加对应的使用指南章节
 - **DashScope API 注意** — 提交用 `/api/v1/services/audio/asr/transcription`，轮询用 `/api/v1/tasks/{id}`，两个路径不同；`transcription_url` 是预签名 OSS URL，不需要 Authorization header
 - **STT 回退模式** — DashScope 优先，失败或未配置自动回退讯飞；`extractTranscript` 失败必须抛异常（不能返回空串），否则回退不触发；讯飞收到非零 code 时若已有部分结果则 resolve 而非 reject（防止 11203 等错误丢弃已转写内容）
 - **AI 分析模型** — OpenRouter → DeepSeek Chat V3（`deepseek/deepseek-chat-v3-0324`），无 fallback；中国区部署不可用 Google Gemini / Anthropic Claude / OpenAI
@@ -101,6 +103,7 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 | 🟡 中 | 无告警机制 | STT/AI 大规模失败时无主动通知（只能事后看日志） | 待优化 |
 | ✅ | 52 条历史 error 记录已重置 | 已通过 Supabase 将 error 重置为 pending（35 条），下次店长打开录音页自动重跑 | 已完成 |
 - **版本号更新** — 每次功能迭代提交前，必须更新 `apps/web/components/layout/UpdatePrompt.tsx` 中的 `APP_VERSION`（递增 patch 版本）和 `BUILD_DATE`（当天日期）
+- **CHANGELOG.md 同步更新** — 每次功能迭代提交前，在根目录 `CHANGELOG.md` 对应版本区块记录变更（遵循 [Keep a Changelog](https://keepachangelog.com/) 规范：Added / Changed / Fixed / Removed）
 - **DATABASE.md 与实际表有差异** — `lingtin_visit_records` 实际含 `feedbacks JSONB` 列（AI 评价短语列表），但 DATABASE.md 未记录。修改 schema 前先查实际表结构
 
 > 详见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
@@ -185,7 +188,9 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
-| 看板反馈录音播放 | feat/meeting-recording | 代码完成，待部署测试 | 后端 dashboard.service.ts 加 `audio_url` 字段，前端 dashboard/page.tsx 加播放按钮（播放/暂停/切换/关闭停止）。构建通过。需先部署后端到 Zeabur，再用 `pnpm dev:web` 对线上 API 测试 |
-| 录音页视觉优化 Phase 2 | feat/meeting-recording | 代码完成，待提交 | 间距节奏+触控44px+会议配色+按钮联动+周例会提示卡(gray风格)。未提交文件：page.tsx, MeetingTypeSelector.tsx, RecordButton.tsx, TableSelector.tsx, UpdatePrompt.tsx, sw.js |
+| PR #6: 看板播放 + 录音页优化 | feat/meeting-recording | PR 已创建，待 Jeremy merge | PR: https://github.com/JeremyDong22/lingtinofsmartice/pull/6 。含 5 个 commit：motivation banner、dashboard audio playback、recorder visual Phase 2、sw.js rebuild、问卷收束提示修复。已 rebase 到 Jeremy 的 3 个 main 提交（DeepSeek 切换、讯飞 partial fix、CLAUDE.md 技术债）之上 |
+| 看板录音播放 | feat/meeting-recording | 代码完成，待后端部署 | 前端播放逻辑已完整（dashboard/page.tsx:527-538），后端 sentiment-summary 已返回 `audio_url`。**本地测试无法验证**：前端连线上 API（.env.local NEXT_PUBLIC_API_URL），线上 main 分支还没有此改动。merge PR 后 Zeabur 自动部署即可测试 |
+| MotivationBanner 统计 | feat/meeting-recording | 代码完成，待后端部署 | 同上原因：`motivation-stats` API 端点是 feature branch 新增，线上返回 404。merge 后生效 |
 | 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 签发于 2025-01-23，早于项目创建日期 2025-03-26，Supabase 返回 "Invalid API key"。线上 Zeabur 有正确 key 所以生产正常。修复方法：从 Supabase Dashboard (Settings > API Keys > Legacy > service_role) 获取正确 key 替换 .env |
-| 工作连续性机制 | feat/meeting-recording | 已实现 | ~/.claude/CLAUDE.md(全局规则) + 项目CLAUDE.md(进行中工作区块) 均已写入，待随下次 commit 一起提交 |
+| 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API（NEXT_PUBLIC_API_URL=线上地址），本地后端虽启动但未被前端使用。本地后端因 service key 无效运行在 MOCK MODE。要完整本地测试需修复 .env key 并改 .env.local 指向 localhost:3001 |
+| 厨师长角色 + 移除隐身模式 | feat/meeting-recording | 代码完成，待用户验证 | 隐身模式已移除。新增 `head_chef` 角色：3 页面（/chef/dashboard、/chef/dishes、/chef/meetings）+ ChefBottomNav + 路由跳转。共享常量提取到 `lib/action-item-constants.ts` + `lib/date-utils.ts`。版本更新到 1.1.0。测试账号 `cheftest`（密码 chef123）已通过 MCP 在线上 Supabase 创建。`pnpm build:web` 通过 |
