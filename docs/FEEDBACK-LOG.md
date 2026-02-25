@@ -51,6 +51,7 @@
 | FB-001 | 2026-02-21 | 店长 | 录音页面问卷提示不显示——种子数据 `restaurant_id` 为占位符 UUID，与真实餐厅不匹配，API 查询返回空 | P1 | 已采纳 | 无需改代码；在管理端 `/admin/question-templates` 新建模板即可自动绑定当前餐厅 ID |
 | FB-002 | 2026-02-21 | 店长 | 语音转录缺少说话人分离标识——线上未配置 `DASHSCOPE_API_KEY`，回退讯飞 STT 不支持 diarization | P1 | 已采纳 | 需 Jeremy 在 Zeabur 配置 `DASHSCOPE_API_KEY`；配置后 DashScope Paraformer-v2 自动启用说话人分离 |
 | FB-003 | 2026-02-21 | 店长 | AI 输出与总结内容需优化——当前摘要 20 字、情绪分、feedbacks 等维度是否足够，展示形式是否需调整 | P2 | 待评估 | 待用户审阅当前 5 个 AI 提示词后讨论具体优化方向 |
+| FB-004 | 2026-02-25 | 店长 | 餐前会录音经常取消不了——点击停止按钮无响应，录音无法停止 | P0 | 已上线 | 根因：录音按钮脉冲光环动画 div 未设 `pointer-events: none`，在移动端拦截触摸事件。修复：添加 `pointer-events-none` class |
 
 ### 数据看板模块
 

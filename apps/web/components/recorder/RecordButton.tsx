@@ -47,9 +47,9 @@ export function RecordButton({
       <div className="relative">
         {isRecording && (
           <>
-            <div className="absolute inset-0 w-28 h-28 bg-primary-400 rounded-full animate-pulse-ring" />
+            <div className="absolute inset-0 w-28 h-28 bg-primary-400 rounded-full animate-pulse-ring pointer-events-none" />
             <div
-              className="absolute inset-0 w-28 h-28 bg-primary-300 rounded-full animate-pulse-ring"
+              className="absolute inset-0 w-28 h-28 bg-primary-300 rounded-full animate-pulse-ring pointer-events-none"
               style={{ animationDelay: '0.5s' }}
             />
           </>
