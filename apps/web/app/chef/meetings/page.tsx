@@ -124,9 +124,9 @@ function PendingItemsSection({ items, collapsed, onToggleCollapse, updatingItemI
         className="w-full flex items-center justify-between mb-2"
       >
         <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-          <span className="text-base">&#x1F514;</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
           <span>未完成事项</span>
-          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600">
+          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-600">
             {items.length}项
           </span>
         </h2>
@@ -148,13 +148,13 @@ function PendingItemsSection({ items, collapsed, onToggleCollapse, updatingItemI
               const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
 
               return (
-                <div key={item.id} className="bg-white rounded-2xl border border-gray-200 p-3.5 shadow-sm">
+                <div key={item.id} className="bg-white rounded-2xl p-3.5 shadow-sm">
                   {/* Date label */}
                   <div className="text-[10px] text-gray-400 font-medium mb-1.5">{group.label}</div>
 
                   {/* Priority dot + category */}
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
                     <span className={`text-xs font-medium ${priorityConf?.color || 'text-gray-500'}`}>
                       {priorityConf?.label || item.priority}
                     </span>
@@ -422,10 +422,10 @@ export default function ChefMeetingsPage() {
         {!summaryLoading && (
           <section>
             <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-              <span>📋</span> 复盘议题（AI 生成）
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" /> 复盘议题（AI 生成）
             </h2>
             {agendaItems.length === 0 ? (
-              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
+              <div className="bg-gray-50 rounded-2xl p-4">
                 <p className="text-sm text-gray-500 text-center">
                   今日议题将于 21:00 自动生成
                 </p>
@@ -440,14 +440,14 @@ export default function ChefMeetingsPage() {
                   return (
                     <div
                       key={idx}
-                      className={`rounded-2xl p-3 border ${
+                      className={`rounded-2xl p-3 ${
                         isKitchen
-                          ? 'bg-orange-50 border-orange-200'
-                          : 'bg-gray-50 border-gray-200'
+                          ? 'bg-orange-50 border border-orange-200'
+                          : 'bg-gray-50'
                       }`}
                     >
                       <div className="flex items-start gap-2">
-                        <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${severity.dot}`} />
+                        <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${severity.dot}`} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className={`text-xs font-medium ${

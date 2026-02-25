@@ -1,18 +1,21 @@
-// User Menu Component - Display user avatar with dropdown menu for logout
-// v1.0 - Initial implementation
+// User Menu Component - Display user avatar with dropdown menu
+// v1.1 - Added 问卷管理 entry for admin role
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function UserMenu() {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Get first character of employee name (e.g., "梁店长" -> "梁")
   const avatarChar = user?.employeeName?.charAt(0) || '?';
+  const isAdmin = user?.roleCode === 'administrator';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -56,6 +59,20 @@ export function UserMenu() {
               {user.restaurantName}
             </p>
           </div>
+
+          {/* Question Templates Management (admin only) */}
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                router.push('/admin/question-templates/manage');
+              }}
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+            >
+              <span className="text-gray-400">📋</span>
+              问卷管理
+            </button>
+          )}
 
           {/* Logout Button */}
           <button

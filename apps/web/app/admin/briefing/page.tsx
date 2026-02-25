@@ -1,9 +1,9 @@
-// Admin Briefing Page - Daily cross-restaurant anomaly report
-// v1.0 - Problem-first briefing with customer quotes + audio playback
+// Admin Overview Page - Merged briefing + dashboard
+// v2.0 - Combined: problem cards + metrics row + keywords + store grid
 
 'use client';
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,8 @@ interface BriefingEvidence {
   text: string;
   tableId: string;
   audioUrl: string | null;
+  managerQuestions?: string[];
+  customerAnswers?: string[];
 }
 
 interface BriefingProblem {
@@ -36,22 +38,24 @@ interface BriefingResponse {
   avg_coverage: number;
 }
 
-interface SuggestionEvidence {
-  tableId: string;
-  audioUrl: string | null;
-  restaurantName: string;
-  restaurantId: string;
+interface RestaurantOverview {
+  id: string;
+  name: string;
+  visit_count: number;
+  open_count: number;
+  coverage: number;
+  avg_sentiment: number | null;
+  keywords: string[];
 }
 
-interface SuggestionItem {
-  text: string;
-  count: number;
-  restaurants: string[];
-  evidence: SuggestionEvidence[];
-}
-
-interface SuggestionsResponse {
-  suggestions: SuggestionItem[];
+interface OverviewResponse {
+  summary: {
+    total_visits: number;
+    avg_sentiment: number | null;
+    restaurant_count: number;
+  };
+  restaurants: RestaurantOverview[];
+  recent_keywords: string[];
 }
 
 // Category icon map
@@ -65,6 +69,28 @@ const CATEGORY_ICONS: Record<string, string> = {
   no_visits: '⚠️',
   action_overdue: '📋',
 };
+
+// Keyword sentiment
+const POSITIVE_KEYWORDS = ['好吃', '超好吃', '很好吃', '服务好', '服务热情', '环境好', '环境不错', '干净', '新鲜', '分量足', '实惠', '会再来', '推荐朋友', '肉质好', '火候刚好', '味道好', '蘸料好', '烤肉香', '小菜好吃'];
+const NEGATIVE_KEYWORDS = ['偏咸', '太咸', '太油', '上菜慢', '服务差', '服务一般', '态度不好', '不新鲜', '退菜', '空调冷', '等位久', '一般般', '还行'];
+
+function getKeywordStyle(keyword: string): string {
+  if (POSITIVE_KEYWORDS.some(pk => keyword.includes(pk))) return 'bg-green-50 text-green-600';
+  if (NEGATIVE_KEYWORDS.some(nk => keyword.includes(nk))) return 'bg-red-50 text-red-600';
+  return 'bg-gray-100 text-gray-600';
+}
+
+function getSentimentDisplay(score: number | null): { color: string; bg: string; label: string } {
+  if (score === null) return { color: 'text-gray-400', bg: 'bg-gray-100', label: '暂无' };
+  if (score >= 0.7) return { color: 'text-green-600', bg: 'bg-green-100', label: '优秀' };
+  if (score >= 0.5) return { color: 'text-yellow-600', bg: 'bg-yellow-100', label: '一般' };
+  return { color: 'text-red-600', bg: 'bg-red-100', label: '需关注' };
+}
+
+function formatSentiment(score: number | null): string {
+  if (score === null) return '--';
+  return `${Math.round(score * 100)}`;
+}
 
 export default function AdminBriefingPage() {
   const { user } = useAuth();
@@ -101,8 +127,8 @@ export default function AdminBriefingPage() {
 
   // Fetch briefing data
   const { data, isLoading } = useSWR<BriefingResponse>('/api/dashboard/briefing');
-  // Fetch customer suggestions (7-day rolling)
-  const { data: suggestionsData } = useSWR<SuggestionsResponse>('/api/dashboard/suggestions?restaurant_id=all&days=7');
+  // Fetch overview data (keywords + store grid)
+  const { data: overviewData } = useSWR<OverviewResponse>('/api/dashboard/restaurants-overview');
 
   const userName = user?.employeeName || user?.username || '您';
   const greeting = data?.greeting || '您好';
@@ -111,7 +137,10 @@ export default function AdminBriefingPage() {
   const restaurantCount = data?.restaurant_count ?? 0;
   const avgSentiment = data?.avg_sentiment;
   const avgCoverage = data?.avg_coverage ?? 0;
-  const suggestions = suggestionsData?.suggestions ?? [];
+
+  const summary = overviewData?.summary;
+  const restaurants = overviewData?.restaurants || [];
+  const recentKeywords = overviewData?.recent_keywords || [];
 
   // Format today's date
   const today = new Date();
@@ -121,7 +150,7 @@ export default function AdminBriefingPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">每日简报</h1>
+        <h1 className="text-lg font-semibold text-gray-900">总览</h1>
         <UserMenu />
       </header>
 
@@ -146,6 +175,37 @@ export default function AdminBriefingPage() {
           <span className="text-sm text-gray-400">{dateStr}</span>
         </div>
 
+        {/* Compact metrics row */}
+        {!isLoading && (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white rounded-xl p-3 text-center">
+              <div className="text-xs text-gray-500 mb-0.5">桌访</div>
+              <div className="text-xl font-bold text-gray-900">
+                {summary?.total_visits ?? 0}
+              </div>
+              <div className="text-xs text-gray-400">
+                {restaurantCount} 家门店
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-3 text-center">
+              <div className="text-xs text-gray-500 mb-0.5">情绪</div>
+              <div className={`text-xl font-bold ${getSentimentDisplay(avgSentiment ?? null).color}`}>
+                {avgSentiment != null ? `${Math.round(avgSentiment * 100)}分` : '--'}
+              </div>
+              <div className="text-xs text-gray-400">
+                {getSentimentDisplay(avgSentiment ?? null).label}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl p-3 text-center">
+              <div className="text-xs text-gray-500 mb-0.5">覆盖率</div>
+              <div className="text-xl font-bold text-gray-900">
+                {avgCoverage > 0 ? `${avgCoverage}%` : '--'}
+              </div>
+              <div className="text-xs text-gray-400">&nbsp;</div>
+            </div>
+          </div>
+        )}
+
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-3">
@@ -165,7 +225,6 @@ export default function AdminBriefingPage() {
             {problems.map((problem, idx) => (
               <ProblemCard
                 key={`${problem.restaurantId}-${problem.category}-${idx}`}
-                index={idx + 1}
                 problem={problem}
                 playingKey={playingKey}
                 onAudioToggle={handleAudioToggle}
@@ -206,142 +265,218 @@ export default function AdminBriefingPage() {
           </div>
         )}
 
-        {/* Customer Suggestions (7-day rolling) */}
-        {!isLoading && suggestions.length > 0 && (
-          <div className="bg-white rounded-xl overflow-hidden">
-            <div className="p-4 pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm">💡</span>
-                  <span className="text-sm font-semibold text-gray-900">顾客建议 · 近 7 天</span>
-                </div>
-                <span className="text-xs text-gray-400">{suggestions.length} 条</span>
-              </div>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {suggestions.map((item, idx) => (
-                <div key={idx} className="px-4 py-3">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <span className="text-sm font-medium text-gray-800">
-                      {item.text}
-                    </span>
-                    <span className="flex-shrink-0 text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-                      ×{item.count}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-400 mb-1.5">
-                    来自：{item.restaurants.filter(Boolean).join('、') || '未知门店'}
-                  </p>
-                  {item.evidence.length > 0 && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <span>
-                        {item.evidence[0].restaurantName || '门店'} · {item.evidence[0].tableId}桌
-                      </span>
-                      {item.evidence[0].audioUrl && (
-                        <button
-                          onClick={() => handleAudioToggle(`suggestion-${idx}`, item.evidence[0].audioUrl!)}
-                          className="text-primary-600 font-medium"
-                        >
-                          {playingKey === `suggestion-${idx}` ? '⏸ 暂停' : '▶ 原声'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+        {/* Today's keywords (from dashboard) */}
+        {recentKeywords.length > 0 && (
+          <div className="bg-white rounded-xl p-4">
+            <div className="text-xs text-gray-500 mb-2">今日关键词</div>
+            <div className="flex flex-wrap gap-2">
+              {recentKeywords.map((kw, idx) => (
+                <span
+                  key={idx}
+                  className={`px-2.5 py-1 rounded-full text-xs ${getKeywordStyle(kw)}`}
+                >
+                  {kw}
+                </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Link to full dashboard */}
-        {!isLoading && (
-          <button
-            onClick={() => router.push('/admin/dashboard')}
-            className="w-full text-center text-sm text-primary-600 font-medium py-3"
-          >
-            查看全部门店 →
-          </button>
+        {/* Store grid (from dashboard) */}
+        {restaurants.length > 0 && (
+          <div>
+            <div className="text-sm font-medium text-gray-700 px-1 mb-3">门店概况</div>
+            <div className="grid grid-cols-2 gap-3">
+              {restaurants.map((rest) => {
+                const sentiment = getSentimentDisplay(rest.avg_sentiment);
+                return (
+                  <div
+                    key={rest.id}
+                    className="bg-white rounded-xl p-3 active:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => router.push(`/admin/restaurant-detail?id=${rest.id}`)}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{rest.name}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {rest.visit_count} 次桌访
+                          {rest.open_count > 0 && ` · ${rest.coverage}%`}
+                        </div>
+                      </div>
+                      <div className={`px-2 py-1 rounded-lg ${sentiment.bg} ml-1 flex-shrink-0`}>
+                        <div className={`text-sm font-bold ${sentiment.color} text-center`}>
+                          {formatSentiment(rest.avg_sentiment)}
+                        </div>
+                        <div className={`text-[10px] ${sentiment.color} text-center`}>
+                          {sentiment.label}
+                        </div>
+                      </div>
+                    </div>
+
+                    {rest.keywords.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {rest.keywords.slice(0, 4).map((kw, idx) => (
+                          <span
+                            key={idx}
+                            className={`px-1.5 py-0.5 rounded text-[10px] ${getKeywordStyle(kw)}`}
+                          >
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {rest.keywords.length === 0 && rest.visit_count === 0 && (
+                      <div className="text-xs text-gray-400">暂无桌访</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
+
+        {/* Bottom spacing for nav */}
+        <div className="h-4" />
       </div>
+    </div>
+  );
+}
+
+// --- Inline Q&A conversation renderer ---
+function QAConversation({ questions, answers }: { questions: string[]; answers: string[] }) {
+  const maxLen = Math.max(questions.length, answers.length);
+  if (maxLen === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {Array.from({ length: maxLen }).map((_, j) => (
+        <Fragment key={j}>
+          {questions[j] && (
+            <div className="flex gap-2">
+              <span className="text-[10px] text-gray-400 mt-0.5 flex-shrink-0 w-7 text-right">店长</span>
+              <p className="text-xs text-gray-500 flex-1">{questions[j]}</p>
+            </div>
+          )}
+          {answers[j] && (
+            <div className="flex gap-2">
+              <span className="text-[10px] text-primary-500 mt-0.5 flex-shrink-0 w-7 text-right">顾客</span>
+              <p className="text-xs text-gray-800 flex-1">{answers[j]}</p>
+            </div>
+          )}
+        </Fragment>
+      ))}
     </div>
   );
 }
 
 // --- Problem Card Component ---
 function ProblemCard({
-  index,
   problem,
   playingKey,
   onAudioToggle,
   onNavigate,
 }: {
-  index: number;
   problem: BriefingProblem;
   playingKey: string | null;
   onAudioToggle: (key: string, url: string) => void;
   onNavigate: (restaurantId: string) => void;
 }) {
-  const severityBorder = problem.severity === 'red' ? 'border-l-red-500' : 'border-l-amber-400';
-  const severityDot = problem.severity === 'red'
-    ? 'bg-red-500'
-    : 'bg-amber-400';
-  const icon = CATEGORY_ICONS[problem.category] || '⚠️';
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const severityColor = problem.severity === 'red' ? 'bg-red-500' : 'bg-amber-400';
 
   return (
-    <div className={`bg-white rounded-xl border-l-4 ${severityBorder} overflow-hidden`}>
-      <div className="p-4">
-        {/* Title row */}
-        <div className="flex items-start gap-2 mb-2">
-          <span className={`inline-block w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${severityDot}`} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                {problem.restaurantName}
-              </span>
-              <span className="text-sm font-semibold text-gray-900">
-                {icon} {problem.title}
-              </span>
-            </div>
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <span className={`w-1.5 h-1.5 rounded-full ${severityColor} flex-shrink-0`} />
+            <span className="text-xs text-gray-400">{problem.restaurantName}</span>
           </div>
-        </div>
-
-        {/* Metric (for coverage/sentiment anomalies) */}
-        {problem.metric && (
-          <p className="text-xs text-gray-500 ml-4 mb-2">{problem.metric}</p>
-        )}
-
-        {/* Evidence quotes */}
-        {problem.evidence.length > 0 && (
-          <div className="ml-4 bg-gray-50 rounded-lg p-3 space-y-1.5">
-            {problem.evidence.map((ev, i) => (
-              <div key={i} className="flex items-start justify-between gap-2">
-                <p className="text-sm text-gray-700 flex-1">
-                  &ldquo;{ev.text}&rdquo;
-                  <span className="text-xs text-gray-400 ml-1">— {ev.tableId}</span>
-                </p>
-                {ev.audioUrl && (
-                  <button
-                    onClick={() => onAudioToggle(`${problem.restaurantId}-${i}`, ev.audioUrl!)}
-                    className="flex-shrink-0 text-xs text-primary-600 font-medium flex items-center gap-0.5"
-                  >
-                    {playingKey === `${problem.restaurantId}-${i}` ? '⏸ 暂停' : '▶ 原声'}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Action links */}
-        <div className="flex items-center justify-end gap-3 mt-3">
           <button
             onClick={() => onNavigate(problem.restaurantId)}
-            className="text-sm text-primary-600 font-medium"
+            className="text-xs text-gray-400 hover:text-primary-600 transition-colors"
           >
-            查看详情 →
+            详情 &rsaquo;
           </button>
         </div>
+        <h3 className="text-[15px] font-semibold text-gray-900 leading-snug">
+          {problem.title}
+        </h3>
+        {problem.metric && (
+          <p className="text-xs text-gray-400 mt-0.5">{problem.metric}</p>
+        )}
       </div>
+
+      {/* Evidence list */}
+      {problem.evidence.length > 0 && (
+        <div className="px-2 pb-2">
+          {problem.evidence.map((ev, i) => {
+            const isExpanded = expandedIdx === i;
+            const hasQA = (ev.managerQuestions?.length ?? 0) > 0 || (ev.customerAnswers?.length ?? 0) > 0;
+            const audioKey = `${problem.restaurantId}-${problem.category}-${i}`;
+            return (
+              <div
+                key={i}
+                className={`mx-0 rounded-xl transition-colors ${isExpanded ? 'bg-gray-50' : ''}`}
+              >
+                {/* Evidence row — tappable */}
+                <div
+                  className={`flex items-center gap-2.5 px-3 py-2.5 ${hasQA ? 'cursor-pointer active:bg-gray-50' : ''}`}
+                  onClick={() => hasQA && setExpandedIdx(isExpanded ? null : i)}
+                >
+                  {/* Quote */}
+                  <p className="text-sm text-gray-700 flex-1 leading-relaxed">
+                    &ldquo;{ev.text}&rdquo;
+                  </p>
+                  {/* Right side controls */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                      {ev.tableId}
+                    </span>
+                    {ev.audioUrl && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAudioToggle(audioKey, ev.audioUrl!); }}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                          playingKey === audioKey
+                            ? 'bg-primary-100 text-primary-600'
+                            : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
+                        }`}
+                      >
+                        {playingKey === audioKey ? (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        )}
+                      </button>
+                    )}
+                    {hasQA && (
+                      <svg
+                        className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded Q&A */}
+                {isExpanded && (
+                  <div className="px-3 pb-3 pt-0">
+                    <div className="border-l-2 border-primary-200 pl-3 py-1.5">
+                      <QAConversation
+                        questions={ev.managerQuestions || []}
+                        answers={ev.customerAnswers || []}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

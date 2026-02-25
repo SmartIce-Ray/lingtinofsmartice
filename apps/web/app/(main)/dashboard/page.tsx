@@ -132,7 +132,7 @@ function SpeechQualitySplit({ questions }: { questions: ManagerQuestion[] }) {
       {good.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-sm">💡</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
             <span className="text-xs font-semibold text-gray-600">优秀示范</span>
           </div>
           <div className="space-y-2">
@@ -148,7 +148,7 @@ function SpeechQualitySplit({ questions }: { questions: ManagerQuestion[] }) {
       {improve.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-sm">⚠️</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-xs font-semibold text-gray-600">可以更好</span>
           </div>
           <div className="space-y-2">
@@ -406,7 +406,7 @@ export default function DashboardPage() {
               {sentiment.negative_feedbacks?.length > 0 && (
                 <div className="mb-4">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-sm">⚠️</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
                     <span className="text-xs font-semibold text-gray-600">需要关注</span>
                   </div>
                   <div className="space-y-2">
@@ -425,8 +425,9 @@ export default function DashboardPage() {
                             <span className="text-sm font-medium text-gray-800">
                               {icon} {fb.text}
                             </span>
-                            <span className="text-xs font-semibold text-red-500 bg-red-100 px-2 py-0.5 rounded-full">
-                              {fb.count >= 3 ? '🔴' : '🟡'} {fb.count}桌
+                            <span className="flex items-center gap-1 text-xs font-semibold text-red-500 bg-red-100 px-2 py-0.5 rounded-full">
+                              <span className={`w-1.5 h-1.5 rounded-full ${fb.count >= 3 ? 'bg-red-500' : 'bg-amber-400'}`} />
+                              {fb.count}桌
                             </span>
                           </div>
                         </button>
@@ -440,7 +441,7 @@ export default function DashboardPage() {
               {sentiment.positive_feedbacks?.length > 0 && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-sm">👍</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
                     <span className="text-xs font-semibold text-gray-600">好评亮点</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -475,7 +476,7 @@ export default function DashboardPage() {
               {suggestions.length > 0 && (
                 <div className="mt-4">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-sm">💡</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
                     <span className="text-xs font-semibold text-gray-600">顾客建议</span>
                     <span className="text-xs text-gray-400 ml-auto">近 7 天</span>
                   </div>
@@ -559,7 +560,7 @@ export default function DashboardPage() {
         return (
           <div
             ref={popoverRef}
-            className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-4 w-80 animate-in fade-in zoom-in-95 duration-200"
+            className="fixed z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 w-80 animate-in fade-in zoom-in-95 duration-200"
             style={{
               top: Math.min(selectedFeedback.rect.bottom + 8, window.innerHeight - 300),
               left,
@@ -588,40 +589,35 @@ export default function DashboardPage() {
           {selectedFeedback.feedback.contexts && selectedFeedback.feedback.contexts.length > 0 ? (
             <div className="space-y-3 max-h-60 overflow-y-auto">
               {selectedFeedback.feedback.contexts.map((ctx, idx) => (
-                <div key={idx} className="border-l-2 border-gray-200 pl-3">
+                <div key={idx} className="border-l-2 border-primary-200 pl-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-gray-400">{ctx.tableId}桌</span>
+                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{ctx.tableId}桌</span>
                     {ctx.audioUrl && (
                       <button
                         onClick={() => handleAudioToggle(ctx.visitId, ctx.audioUrl!)}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
-                          playingVisitId === ctx.visitId
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                        }`}
+                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
                       >
-                        {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 原声'}
+                        {playingVisitId === ctx.visitId ? (
+                          <svg className="w-3 h-3 text-gray-600" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        )}
                       </button>
                     )}
                   </div>
 
-                  {/* Manager question */}
+                  {/* Q&A conversation */}
                   {ctx.managerQuestions.length > 0 && (
-                    <div className="mb-2">
-                      <div className="text-xs text-blue-500 mb-0.5">店长:</div>
-                      <div className="text-sm text-gray-700 bg-blue-50 rounded-lg px-2 py-1">
-                        {ctx.managerQuestions.join(' ')}
-                      </div>
+                    <div className="flex gap-2 mb-1">
+                      <span className="w-7 text-right text-[10px] text-gray-400 pt-0.5 flex-shrink-0">店长</span>
+                      <p className="text-sm text-gray-600">{ctx.managerQuestions.join(' ')}</p>
                     </div>
                   )}
-
-                  {/* Customer answer with keyword highlighted */}
                   {ctx.customerAnswers.length > 0 && (
-                    <div>
-                      <div className="text-xs text-gray-500 mb-0.5">顾客:</div>
-                      <div className="text-sm text-gray-800 bg-gray-50 rounded-lg px-2 py-1">
+                    <div className="flex gap-2">
+                      <span className="w-7 text-right text-[10px] text-gray-400 pt-0.5 flex-shrink-0">顾客</span>
+                      <p className="text-sm text-gray-800">
                         {ctx.customerAnswers.map((answer, ansIdx) => {
-                          // Highlight the feedback keyword in the answer
                           const keyword = selectedFeedback.feedback.text;
                           const parts = answer.split(new RegExp(`(${keyword})`, 'gi'));
                           return (
@@ -646,7 +642,7 @@ export default function DashboardPage() {
                             </span>
                           );
                         })}
-                      </div>
+                      </p>
                     </div>
                   )}
                 </div>

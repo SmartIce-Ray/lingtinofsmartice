@@ -7,6 +7,29 @@
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-02-26
+
+### 新增 (Added)
+- 管理层「总览」页 — 合并原简报 + 看板为统一入口（紧凑指标行 + 问题卡片 + 今日关键词 + 门店网格）
+- 管理层「顾客洞察」页 — 顾客建议（近 7 天跨门店聚合）+ 反馈热词（高频差评/好评）
+- 管理层「产品洞察」页 — 跨门店员工问题聚类（话题卡片按关注人数排序，3+ 门店标记共同关注）
+- 后端 `GET /api/staff/insights` 端点 — 聚合 chat_history + visit_records，关键词分类为 7+1 话题
+- UserMenu 新增「问卷管理」入口 — 管理员可从头像菜单进入问卷 CRUD 页面
+- 溯源能力增强 — 总览问题卡片 / 顾客洞察建议+热词 均可展开查看原始 Q&A 对话 + 原声播放
+- 后端 briefing / suggestions API 返回 `managerQuestions` + `customerAnswers` 字段
+- Mock 模式增强 — JWT Guard 支持 mock mode 跳过认证，所有 dashboard API 含丰富 mock 数据
+
+### 变更 (Changed)
+- 管理层底部导航 5 Tab → 4 Tab：总览 / 顾客洞察 / 产品洞察 / 智库
+- `/admin/dashboard` 重定向至 `/admin/briefing`（看板合入总览）
+- 问卷模板 CRUD 移至 `/admin/question-templates/manage` 子路由
+- 简报页标题「每日简报」→「总览」，移除「查看全部门店」链接和顾客建议区块
+- 全角色视觉风格统一 — 卡片 `rounded-2xl shadow-sm`、emoji 标题→彩色圆点、音频按钮→SVG 圆形播放键、Q&A 展开→`border-primary-200` 对齐标签
+- 涉及页面：店长看板、厨师长待办/菜品/会议、管理层总览/顾客洞察/产品洞察/门店详情
+
+### 修复 (Fixed)
+- 顾客洞察页 `isLoading` 逻辑错误：`sugLoading && sentLoading` → `sugLoading || sentLoading`
+
 ## [1.3.1] - 2026-02-25
 
 ### 新增 (Added)

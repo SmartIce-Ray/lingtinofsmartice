@@ -135,7 +135,7 @@ export default function ChefDashboardPage() {
         {!isLoading && priorityItems.length > 0 && (
           <section>
             <h2 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1.5">
-              <span>🔥</span> 建议优先处理
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> 建议优先处理
             </h2>
             <div className="space-y-3">
               {priorityItems.map((item) => (
@@ -155,7 +155,7 @@ export default function ChefDashboardPage() {
         {!isLoading && otherYesterdayUnresolved.length > 0 && (
           <section>
             <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-              <span>📋</span> 餐前关注
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" /> 餐前关注
             </h2>
             <div className="space-y-3">
               {otherYesterdayUnresolved.map((item) => (
@@ -174,7 +174,7 @@ export default function ChefDashboardPage() {
         {!isLoading && (
           <section>
             <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-              <span>📋</span> 其他待办
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" /> 其他待办
             </h2>
             {otherTodayActions.length === 0 && priorityItems.length === 0 ? (
               <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
@@ -226,11 +226,11 @@ function ActionCard({
   const statusConf = STATUS_CONFIG[item.status];
 
   return (
-    <div className={`bg-white rounded-2xl p-4 shadow-sm border ${
-      item.status === 'resolved' ? 'border-green-200 bg-green-50/50' :
-      item.status === 'acknowledged' ? 'border-blue-200 bg-blue-50/30' :
-      highlight ? 'border-red-200 bg-red-50/30' :
-      'border-gray-200'
+    <div className={`bg-white rounded-2xl p-4 shadow-sm ${
+      item.status === 'resolved' ? 'border border-green-200 bg-green-50/50' :
+      item.status === 'acknowledged' ? 'border border-blue-200 bg-blue-50/30' :
+      highlight ? 'border border-red-200 bg-red-50/30' :
+      ''
     }`}>
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
@@ -261,9 +261,10 @@ function ActionCard({
       {item.evidence && item.evidence.length > 0 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          className="mt-2 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
         >
-          {expanded ? '收起详情' : `▸ 查看原始反馈 (${item.evidence.length}条)`}
+          <svg className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          原始反馈 ({item.evidence.length}条)
         </button>
       )}
 

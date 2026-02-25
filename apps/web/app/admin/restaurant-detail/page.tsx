@@ -149,11 +149,11 @@ function RestaurantDetailContent() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className={`px-2.5 py-1 rounded-lg ${sentiment.bg} flex-shrink-0`}>
-                      <span className={`text-sm font-medium ${sentiment.color}`}>
+                    <div className={`px-2.5 py-1 rounded-full ${sentiment.bg} flex-shrink-0`}>
+                      <span className={`text-xs font-medium ${sentiment.color}`}>
                         {visit.sentiment_score !== null ? Math.round(visit.sentiment_score * 100) : '--'}
+                        <span className="ml-0.5">{sentiment.label}</span>
                       </span>
-                      <span className={`text-xs ${sentiment.color} ml-0.5`}>{sentiment.label}</span>
                     </div>
                     {/* Expand indicator */}
                     {visit.corrected_transcript && (
@@ -176,30 +176,29 @@ function RestaurantDetailContent() {
                   </div>
                 )}
 
-                {/* Manager Questions */}
-                {visit.manager_questions && visit.manager_questions.length > 0 && (
-                  <div className="mb-2">
-                    <div className="text-xs text-blue-500 mb-1">店长问:</div>
-                    <div className="bg-blue-50 rounded-lg p-2 text-sm text-blue-800">
-                      {visit.manager_questions.join(' ')}
-                    </div>
-                  </div>
-                )}
-
-                {/* Customer Answers */}
-                {visit.customer_answers && visit.customer_answers.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs text-gray-500 mb-1">顾客答:</div>
-                    <div className="bg-gray-50 rounded-lg p-2 text-sm text-gray-700">
-                      {visit.customer_answers.join(' ')}
-                    </div>
+                {/* Q&A Conversation */}
+                {((visit.manager_questions && visit.manager_questions.length > 0) ||
+                  (visit.customer_answers && visit.customer_answers.length > 0)) && (
+                  <div className="mb-3 border-l-2 border-primary-200 pl-3 space-y-1">
+                    {visit.manager_questions && visit.manager_questions.length > 0 && (
+                      <div className="flex gap-2">
+                        <span className="w-7 text-right text-[10px] text-gray-400 pt-0.5 flex-shrink-0">店长</span>
+                        <p className="text-sm text-gray-600">{visit.manager_questions.join(' ')}</p>
+                      </div>
+                    )}
+                    {visit.customer_answers && visit.customer_answers.length > 0 && (
+                      <div className="flex gap-2">
+                        <span className="w-7 text-right text-[10px] text-gray-400 pt-0.5 flex-shrink-0">顾客</span>
+                        <p className="text-sm text-gray-800">{visit.customer_answers.join(' ')}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* Expanded transcript */}
                 {isExpanded && visit.corrected_transcript && (
-                  <div className="mb-3 p-3 bg-yellow-50 rounded-lg border border-yellow-100">
-                    <div className="text-xs text-yellow-700 mb-1 font-medium">录音全文</div>
+                  <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="text-xs text-gray-500 mb-1 font-medium">录音全文</div>
                     <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                       {visit.corrected_transcript}
                     </p>

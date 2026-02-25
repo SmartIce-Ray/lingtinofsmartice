@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,6 +78,52 @@ interface KitchenProblem {
   label: string;
   count: number;
   feedbacks: SentimentFeedbackItem[];
+}
+
+// --- Shared: SVG play/pause circle button ---
+function AudioCircleButton({ isPlaying, onClick }: { isPlaying: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
+        isPlaying
+          ? 'bg-primary-100 text-primary-600'
+          : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
+      }`}
+    >
+      {isPlaying ? (
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+      ) : (
+        <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+      )}
+    </button>
+  );
+}
+
+// --- Shared: Q&A conversation renderer ---
+function QAConversation({ questions, answers }: { questions: string[]; answers: string[] }) {
+  const maxLen = Math.max(questions.length, answers.length);
+  if (maxLen === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {Array.from({ length: maxLen }).map((_, j) => (
+        <Fragment key={j}>
+          {questions[j] && (
+            <div className="flex gap-2">
+              <span className="text-[10px] text-gray-400 mt-0.5 flex-shrink-0 w-7 text-right">店长</span>
+              <p className="text-xs text-gray-500 flex-1">{questions[j]}</p>
+            </div>
+          )}
+          {answers[j] && (
+            <div className="flex gap-2">
+              <span className="text-[10px] text-primary-500 mt-0.5 flex-shrink-0 w-7 text-right">顾客</span>
+              <p className="text-xs text-gray-800 flex-1">{answers[j]}</p>
+            </div>
+          )}
+        </Fragment>
+      ))}
+    </div>
+  );
 }
 
 export default function ChefDishesPage() {
@@ -155,12 +201,10 @@ export default function ChefDishesPage() {
   const kitchenHighlights: { icon: string; label: string; count: number }[] = [];
 
   if (sentimentData) {
-    // Group negative feedbacks by kitchen category
     const catMap = new Map<string, { icon: string; label: string; items: SentimentFeedbackItem[] }>();
     for (const fb of sentimentData.negative_feedbacks || []) {
       const cat = detectKitchenCategory(fb.text);
       if (!cat.isKitchen) continue;
-      // Skip dish_quality — those are already in dishData
       if (cat.label === '菜品口味') continue;
       const key = cat.label;
       const existing = catMap.get(key) || { icon: cat.icon, label: cat.label, items: [] };
@@ -173,7 +217,6 @@ export default function ChefDishesPage() {
     });
     kitchenProblems.sort((a, b) => b.count - a.count);
 
-    // Kitchen-related positive feedbacks
     for (const fb of sentimentData.positive_feedbacks || []) {
       const cat = detectKitchenCategory(fb.text);
       if (cat.isKitchen && cat.label !== '菜品口味') {
@@ -194,7 +237,7 @@ export default function ChefDishesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3">
         <div className="flex items-center justify-between">
@@ -237,11 +280,10 @@ export default function ChefDishesPage() {
             {/* ── Kitchen Dimension Problems (speed, temp, etc.) ── */}
             {kitchenProblems.length > 0 && (
               <section>
-                {/* Only show section header if there are also dish problems */}
                 {(problemDishes.length > 0 || kitchenProblems.length > 0) && (
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-base">⚠️</span>
-                    <span className="text-sm font-semibold text-amber-800">需要关注</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span className="text-sm font-semibold text-gray-700">需要关注</span>
                   </div>
                 )}
 
@@ -249,7 +291,7 @@ export default function ChefDishesPage() {
                   {kitchenProblems.map((kp) => {
                     const isExpanded = expandedKitchen === kp.label;
                     return (
-                      <div key={kp.label} className="bg-white rounded-2xl shadow-sm border border-amber-100/60 overflow-hidden">
+                      <div key={kp.label} className="bg-white rounded-2xl shadow-sm overflow-hidden">
                         <button
                           onClick={() => {
                             if (isExpanded) stopAudio();
@@ -261,61 +303,62 @@ export default function ChefDishesPage() {
                             <span className="text-[15px] font-semibold text-gray-800">
                               {kp.icon} {kp.label}
                             </span>
-                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                              kp.count >= 3 ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'
-                            }`}>
-                              {kp.count >= 3 ? '🔴' : '🟡'} {kp.count}桌反馈
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                kp.count >= 3 ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'
+                              }`}>
+                                {kp.count}桌
+                              </span>
+                              <svg
+                                className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
                           </div>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {kp.feedbacks.map(fb => (
-                              <span key={fb.text} className="text-[13px] text-red-700/80 bg-red-50/80 border border-red-100 rounded-lg px-2.5 py-1">
+                              <span key={fb.text} className="text-[13px] text-red-700/80 bg-red-50/80 rounded-lg px-2.5 py-1">
                                 &ldquo;{fb.text}&rdquo;{fb.count > 1 && <span className="ml-1 text-red-500/60">&times;{fb.count}</span>}
                               </span>
                             ))}
                           </div>
-                          <div className="flex items-center justify-end mt-2">
-                            <span className="text-xs text-blue-500">{isExpanded ? '收起 ▴' : '查看对话 ▾'}</span>
-                          </div>
                         </button>
 
-                        {/* Expanded: show contexts + action buttons */}
+                        {/* Expanded: show contexts with Q&A */}
                         {isExpanded && (
-                          <div className="border-t border-amber-100/60 bg-stone-50/50 px-4 pb-4 pt-3 space-y-3">
+                          <div className="bg-gray-50 px-4 pb-4 pt-3 space-y-3">
                             {kp.feedbacks.map(fb => (
                               fb.contexts || []).map((ctx, i) => (
-                                <div key={`${ctx.visitId}-${i}`}>
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-sm font-medium text-gray-700">{ctx.tableId}桌</span>
+                                <div key={`${ctx.visitId}-${i}`} className="bg-white rounded-xl p-3 border border-gray-100">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                      {ctx.tableId}桌
+                                    </span>
                                     {ctx.audioUrl && (
-                                      <button
+                                      <AudioCircleButton
+                                        isPlaying={playingVisitId === ctx.visitId}
                                         onClick={(e) => { e.stopPropagation(); handleAudioToggle(ctx.visitId, ctx.audioUrl!); }}
-                                        className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                                          playingVisitId === ctx.visitId ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600'
-                                        }`}
-                                      >
-                                        {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 原声'}
-                                      </button>
+                                      />
                                     )}
                                   </div>
-                                  {ctx.customerAnswers.length > 0 && (
-                                    <div className="text-[13px] text-gray-700 bg-white rounded-lg px-3 py-2 border border-gray-100">
-                                      <span className="text-gray-400 font-medium">顾客：</span>{ctx.customerAnswers.join(' ')}
-                                    </div>
-                                  )}
+                                  <div className="border-l-2 border-primary-200 pl-3">
+                                    <QAConversation questions={ctx.managerQuestions} answers={ctx.customerAnswers} />
+                                  </div>
                                 </div>
                               ))
                             )}
                             {/* Action buttons */}
-                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
-                                ✅ 已改善
+                            <div className="flex items-center gap-2 pt-2">
+                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-xl hover:bg-green-100 transition-colors">
+                                已改善
                               </button>
                               <button
                                 onClick={() => router.push('/chef/dashboard')}
-                                className="flex-1 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                                className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
                               >
-                                📋 查看待办
+                                查看待办
                               </button>
                             </div>
                           </div>
@@ -332,15 +375,14 @@ export default function ChefDishesPage() {
               <section>
                 {kitchenProblems.length === 0 && (
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-base">⚠️</span>
-                    <span className="text-sm font-semibold text-amber-800">需要关注</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span className="text-sm font-semibold text-gray-700">需要关注</span>
                   </div>
                 )}
                 {kitchenProblems.length > 0 && (
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-sm">🍳</span>
                     <span className="text-xs font-semibold text-gray-500">菜品口味问题</span>
-                    <span className="ml-auto text-xs text-amber-700/70 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                    <span className="ml-auto text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
                       {problemDishes.length}道
                     </span>
                   </div>
@@ -354,7 +396,7 @@ export default function ChefDishesPage() {
                     return (
                       <div
                         key={dish.dish_name}
-                        className="bg-white rounded-2xl shadow-sm border border-amber-100/60 overflow-hidden"
+                        className="bg-white rounded-2xl shadow-sm overflow-hidden"
                       >
                         {/* Clickable card header */}
                         <button
@@ -364,14 +406,21 @@ export default function ChefDishesPage() {
                           }}
                           className="w-full px-4 py-3.5 text-left active:bg-gray-50/50"
                         >
-                          {/* Dish name + negative count */}
                           <div className="flex items-center justify-between">
                             <span className="text-[15px] font-semibold text-gray-800">
                               {dish.dish_name}
                             </span>
-                            <span className="text-xs font-medium text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
-                              {dish.negative}桌差评
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                                {dish.negative}桌差评
+                              </span>
+                              <svg
+                                className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
                           </div>
 
                           {/* Negative feedback tags */}
@@ -380,7 +429,7 @@ export default function ChefDishesPage() {
                               {dish.negative_feedbacks.map((fb) => (
                                 <span
                                   key={fb.text}
-                                  className="inline-flex items-center text-[13px] text-red-700/80 bg-red-50/80 border border-red-100 rounded-lg px-2.5 py-1"
+                                  className="inline-flex items-center text-[13px] text-red-700/80 bg-red-50/80 rounded-lg px-2.5 py-1"
                                 >
                                   &ldquo;{fb.text}&rdquo;
                                   {fb.count > 1 && (
@@ -393,89 +442,54 @@ export default function ChefDishesPage() {
                             </div>
                           )}
 
-                          {/* Bottom row: positive count + expand hint */}
-                          <div className="flex items-center justify-between mt-2.5">
-                            {dish.positive > 0 ? (
+                          {/* Bottom row: positive count */}
+                          {dish.positive > 0 && (
+                            <div className="mt-2.5">
                               <span className="text-xs text-gray-400">
                                 好评 {dish.positive}桌
                               </span>
-                            ) : (
-                              <span />
-                            )}
-                            <span className="text-xs text-blue-500">
-                              {isExpanded ? '收起 ▴' : '查看对话 ▾'}
-                            </span>
-                          </div>
+                            </div>
+                          )}
                         </button>
 
                         {/* ── Expanded conversation detail ── */}
                         {isExpanded && (
-                          <div className="border-t border-amber-100/60 bg-stone-50/50 px-4 pb-4 pt-3 space-y-4">
+                          <div className="bg-gray-50 px-4 pb-4 pt-3 space-y-3">
                             {contexts.length === 0 && (
                               <p className="text-sm text-gray-400 py-2">暂无对话详情</p>
                             )}
 
                             {contexts.map((ctx, i) => (
-                              <div key={ctx.visitId + i}>
-                                {/* Context header row */}
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-medium text-gray-700">
-                                    {ctx.tableId}桌
-                                  </span>
-                                  <span className="text-sm text-red-500">
-                                    {ctx.feedbackText}
-                                  </span>
+                              <div key={ctx.visitId + i} className="bg-white rounded-xl p-3 border border-gray-100">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                      {ctx.tableId}桌
+                                    </span>
+                                    <span className="text-xs text-red-500">{ctx.feedbackText}</span>
+                                  </div>
                                   {ctx.audioUrl && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleAudioToggle(ctx.visitId, ctx.audioUrl!);
-                                      }}
-                                      className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                                        playingVisitId === ctx.visitId
-                                          ? 'bg-blue-100 text-blue-700'
-                                          : 'bg-blue-50 text-blue-600 active:bg-blue-100'
-                                      }`}
-                                    >
-                                      {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 播放原声'}
-                                    </button>
+                                    <AudioCircleButton
+                                      isPlaying={playingVisitId === ctx.visitId}
+                                      onClick={(e) => { e.stopPropagation(); handleAudioToggle(ctx.visitId, ctx.audioUrl!); }}
+                                    />
                                   )}
                                 </div>
-
-                                {/* Q&A conversation bubbles */}
-                                {ctx.managerQuestions.length > 0 && (
-                                  <div className="space-y-2 pl-3 border-l-2 border-blue-100">
-                                    {ctx.managerQuestions.map((q, qi) => (
-                                      <div key={qi} className="space-y-1">
-                                        <div className="text-[13px] text-blue-700/80 bg-blue-50 rounded-lg px-3 py-2">
-                                          <span className="text-blue-500 font-medium">店长：</span>{q}
-                                        </div>
-                                        {ctx.customerAnswers[qi] && (
-                                          <div className="text-[13px] text-gray-700 bg-white rounded-lg px-3 py-2 border border-gray-100">
-                                            <span className="text-gray-400 font-medium">顾客：</span>{ctx.customerAnswers[qi]}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Separator between contexts */}
-                                {i < contexts.length - 1 && (
-                                  <div className="border-b border-dashed border-gray-200 mt-4" />
-                                )}
+                                <div className="border-l-2 border-primary-200 pl-3">
+                                  <QAConversation questions={ctx.managerQuestions} answers={ctx.customerAnswers} />
+                                </div>
                               </div>
                             ))}
                             {/* Action buttons */}
-                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
-                                ✅ 已改善
+                            <div className="flex items-center gap-2 pt-2">
+                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-xl hover:bg-green-100 transition-colors">
+                                已改善
                               </button>
                               <button
                                 onClick={() => router.push('/chef/dashboard')}
-                                className="flex-1 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                                className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
                               >
-                                📋 查看待办
+                                查看待办
                               </button>
                             </div>
                           </div>
@@ -491,24 +505,22 @@ export default function ChefDishesPage() {
             {(goodDishes.length > 0 || kitchenHighlights.length > 0) && (
               <section>
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-base">👍</span>
-                  <span className="text-sm font-semibold text-emerald-800">好评亮点</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="text-sm font-semibold text-gray-700">好评亮点</span>
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">
-                  {/* Non-dish kitchen highlights (e.g., speed praised) */}
                   {kitchenHighlights.map((kh) => (
                     <div key={kh.label} className="flex items-center justify-between px-4 py-3">
                       <span className="text-sm text-gray-700">{kh.icon} {kh.label}</span>
                     </div>
                   ))}
-                  {/* Dish highlights */}
                   {goodDishes.map((dish) => (
                     <div
                       key={dish.dish_name}
                       className="flex items-center justify-between px-4 py-3"
                     >
-                      <span className="text-sm text-gray-700">🍳 {dish.dish_name}</span>
+                      <span className="text-sm text-gray-700">{dish.dish_name}</span>
                       <span className="text-xs text-emerald-600 font-medium">
                         {dish.positive}桌好评
                       </span>

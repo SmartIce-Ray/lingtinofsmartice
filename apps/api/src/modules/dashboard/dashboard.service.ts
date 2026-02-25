@@ -42,7 +42,7 @@ export interface BriefingProblem {
   restaurantId: string;
   restaurantName: string;
   title: string;
-  evidence: { text: string; tableId: string; audioUrl: string | null }[];
+  evidence: { text: string; tableId: string; audioUrl: string | null; managerQuestions: string[]; customerAnswers: string[] }[];
   metric?: string;
 }
 
@@ -347,13 +347,25 @@ export class DashboardService {
         positive_percent: 60, neutral_percent: 25, negative_percent: 15,
         total_feedbacks: 20,
         positive_feedbacks: [
-          { text: '味道很好', count: 4, contexts: [] },
-          { text: '服务热情', count: 3, contexts: [] },
-          { text: '环境不错', count: 2, contexts: [] },
+          { text: '味道很好', count: 4, contexts: [
+            { text: '味道很好', visitId: 'mock-v1', tableId: 'A3', managerQuestions: ['今天菜品口味满意吗？'], customerAnswers: ['味道很好，特别是那道清蒸鲈鱼'], transcript: '', audioUrl: null },
+            { text: '味道很好', visitId: 'mock-v2', tableId: 'B1', managerQuestions: ['觉得怎么样？'], customerAnswers: ['味道很好，下次还来'], transcript: '', audioUrl: null },
+          ] },
+          { text: '服务热情', count: 3, contexts: [
+            { text: '服务热情', visitId: 'mock-v3', tableId: 'C2', managerQuestions: ['服务还满意吗？'], customerAnswers: ['很满意，服务员很热情，一直帮我们加水'], transcript: '', audioUrl: null },
+          ] },
+          { text: '环境不错', count: 2, contexts: [
+            { text: '环境不错', visitId: 'mock-v4', tableId: 'A5', managerQuestions: ['用餐环境还好吗？'], customerAnswers: ['挺好的，很干净，音乐也好听'], transcript: '', audioUrl: null },
+          ] },
         ],
         negative_feedbacks: [
-          { text: '上菜慢', count: 2, contexts: [] },
-          { text: '偏咸', count: 1, contexts: [] },
+          { text: '上菜慢', count: 2, contexts: [
+            { text: '上菜慢', visitId: 'mock-v5', tableId: 'B4', managerQuestions: ['等了多久了？', '对用餐体验满意吗？'], customerAnswers: ['快半小时了吧', '上菜太慢了，孩子都饿哭了'], transcript: '', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3' },
+            { text: '上菜慢', visitId: 'mock-v6', tableId: 'A6', managerQuestions: ['今天用餐还顺利吗？'], customerAnswers: ['等太久了，催了两次'], transcript: '', audioUrl: null },
+          ] },
+          { text: '偏咸', count: 1, contexts: [
+            { text: '偏咸', visitId: 'mock-v7', tableId: 'C1', managerQuestions: ['口味怎么样？'], customerAnswers: ['有点咸，特别是那个红烧肉'], transcript: '', audioUrl: null },
+          ] },
         ],
       };
     }
@@ -452,6 +464,17 @@ export class DashboardService {
   // Get all restaurants overview with sentiment scores and keywords (for admin dashboard)
   // Returns: restaurant list with visit count, avg sentiment, coverage, recent keywords
   async getRestaurantsOverview(date: string) {
+    if (this.supabase.isMockMode()) {
+      return {
+        summary: { total_visits: 28, avg_sentiment: 0.72, restaurant_count: 3 },
+        restaurants: [
+          { id: 'mock-rest-1', name: '望京旗舰店', visit_count: 15, open_count: 20, coverage: 75, avg_sentiment: 0.68, keywords: ['清蒸鲈鱼', '服务热情', '偏咸', '红烧肉'] },
+          { id: 'mock-rest-2', name: '三里屯店', visit_count: 8, open_count: 15, coverage: 53, avg_sentiment: 0.65, keywords: ['上菜慢', '环境不错', '宫保鸡丁'] },
+          { id: 'mock-rest-3', name: '国贸店', visit_count: 5, open_count: 6, coverage: 83, avg_sentiment: 0.88, keywords: ['味道好', '分量足'] },
+        ],
+        recent_keywords: ['清蒸鲈鱼', '服务热情', '偏咸', '上菜慢', '环境不错', '味道好', '红烧肉', '宫保鸡丁', '分量足'],
+      };
+    }
     const client = this.supabase.getClient();
 
     // Get all active restaurants
@@ -654,11 +677,45 @@ export class DashboardService {
     if (this.supabase.isMockMode()) {
       return {
         date,
-        greeting: '早安',
-        problems: [],
+        greeting: this.getGreeting(),
+        problems: [
+          {
+            severity: 'red' as BriefingSeverity,
+            category: 'dish_quality' as BriefingCategory,
+            restaurantId: 'mock-rest-1',
+            restaurantName: '望京旗舰店',
+            title: '🍳 菜品差评（3桌）',
+            evidence: [
+              { text: '酸汤鱼感觉咽不下去，太酸了', tableId: 'B6', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', managerQuestions: ['今天这道酸汤鱼觉得怎么样？', '辣度可以吗？'], customerAnswers: ['太酸了，感觉咽不下去', '辣度还行，就是酸味太重'] },
+              { text: '红烧肉太油腻，吃不了几块', tableId: 'A2', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', managerQuestions: ['红烧肉还合口味吗？'], customerAnswers: ['太油腻了，吃不了几块'] },
+              { text: '糖醋排骨偏甜，糖放多了', tableId: 'C1', audioUrl: null, managerQuestions: ['排骨味道怎么样？'], customerAnswers: ['偏甜了，糖放多了吧'] },
+            ],
+          },
+          {
+            severity: 'yellow' as BriefingSeverity,
+            category: 'service_speed' as BriefingCategory,
+            restaurantId: 'mock-rest-2',
+            restaurantName: '三里屯店',
+            title: '⏱️ 上菜速度投诉（2桌）',
+            evidence: [
+              { text: '等了40分钟还没上齐', tableId: 'A5', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', managerQuestions: ['今天用餐体验怎么样？'], customerAnswers: ['等太久了，40分钟菜还没上齐'] },
+              { text: '催了两次才上菜', tableId: 'B3', audioUrl: null, managerQuestions: ['菜品口味满意吗？', '上菜速度还可以吗？'], customerAnswers: ['口味不错', '不行，催了两次才上来'] },
+            ],
+          },
+          {
+            severity: 'yellow' as BriefingSeverity,
+            category: 'coverage' as BriefingCategory,
+            restaurantId: 'mock-rest-2',
+            restaurantName: '三里屯店',
+            title: '桌访覆盖率偏低',
+            evidence: [],
+            metric: '覆盖率 55%',
+          },
+        ],
         healthy_count: 1,
-        avg_sentiment: 0.84,
-        avg_coverage: 91,
+        restaurant_count: 3,
+        avg_sentiment: 0.68,
+        avg_coverage: 78,
       };
     }
 
@@ -683,7 +740,7 @@ export class DashboardService {
 
     const [visitsRes, actionsRes, sessionsRes, yesterdayVisitsRes] = await Promise.all([
       client.from('lingtin_visit_records')
-        .select('id, restaurant_id, table_id, feedbacks, sentiment_score, audio_url, keywords, status')
+        .select('id, restaurant_id, table_id, feedbacks, sentiment_score, audio_url, keywords, status, manager_questions, customer_answers')
         .eq('visit_date', date)
         .eq('status', 'processed'),
       client.from('lingtin_action_items')
@@ -778,7 +835,7 @@ export class DashboardService {
 
       // --- Anomaly: negative feedbacks by category ---
       // Collect all negative feedbacks with category detection
-      const categoryFeedbacks = new Map<BriefingCategory, { text: string; tableId: string; audioUrl: string | null }[]>();
+      const categoryFeedbacks = new Map<BriefingCategory, { text: string; tableId: string; audioUrl: string | null; managerQuestions: string[]; customerAnswers: string[] }[]>();
 
       for (const visit of restVisits) {
         const feedbacks = visit.feedbacks || [];
@@ -792,6 +849,8 @@ export class DashboardService {
               text: fb.text,
               tableId: visit.table_id,
               audioUrl: visit.audio_url || null,
+              managerQuestions: visit.manager_questions || [],
+              customerAnswers: visit.customer_answers || [],
             });
             categoryFeedbacks.set(cat, existing);
           }
@@ -890,7 +949,37 @@ export class DashboardService {
   // Supports restaurant_id=all (cross-restaurant) or single restaurant UUID
   async getSuggestions(restaurantId: string, days: number) {
     if (this.supabase.isMockMode()) {
-      return { suggestions: [] };
+      return {
+        suggestions: [
+          {
+            text: '希望能加一些辣度选择，比如微辣、中辣、特辣',
+            count: 4,
+            restaurants: ['望京旗舰店', '三里屯店'],
+            evidence: [
+              { tableId: 'B2', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', restaurantName: '望京旗舰店', restaurantId: 'mock-rest-1', managerQuestions: ['对菜品有什么建议吗？'], customerAnswers: ['希望能选辣度，我们爱吃辣但有朋友不能吃'] },
+              { tableId: 'A7', audioUrl: null, restaurantName: '三里屯店', restaurantId: 'mock-rest-2', managerQuestions: ['有什么改进建议？'], customerAnswers: ['加个辣度选项吧，微辣中辣特辣'] },
+              { tableId: 'C3', audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', restaurantName: '望京旗舰店', restaurantId: 'mock-rest-1', managerQuestions: ['下次来还想吃什么？', '口味有要调整的吗？'], customerAnswers: ['还想试试水煮鱼', '能不能出个辣度选择？每次都太辣了'] },
+            ],
+          },
+          {
+            text: '建议增加儿童餐或小份菜',
+            count: 3,
+            restaurants: ['望京旗舰店'],
+            evidence: [
+              { tableId: 'A1', audioUrl: null, restaurantName: '望京旗舰店', restaurantId: 'mock-rest-1', managerQuestions: ['带孩子来用餐方便吗？'], customerAnswers: ['菜量太大了，小朋友吃不完，有儿童餐就好了'] },
+              { tableId: 'B5', audioUrl: null, restaurantName: '望京旗舰店', restaurantId: 'mock-rest-1', managerQuestions: ['还有什么需要的吗？'], customerAnswers: ['能不能出小份的，两个人吃不了那么多'] },
+            ],
+          },
+          {
+            text: '停车不太方便，能不能和隔壁商场合作停车券',
+            count: 2,
+            restaurants: ['三里屯店'],
+            evidence: [
+              { tableId: 'A3', audioUrl: null, restaurantName: '三里屯店', restaurantId: 'mock-rest-2', managerQuestions: ['来店里方便吗？'], customerAnswers: ['开车来的，停车太难了，绕了三圈'] },
+            ],
+          },
+        ],
+      };
     }
 
     const client = this.supabase.getClient();
@@ -902,7 +991,7 @@ export class DashboardService {
 
     let query = client
       .from('lingtin_visit_records')
-      .select('id, restaurant_id, table_id, feedbacks, audio_url')
+      .select('id, restaurant_id, table_id, feedbacks, audio_url, manager_questions, customer_answers')
       .gte('visit_date', toChinaDateString(startDate))
       .lte('visit_date', toChinaDateString(endDate))
       .eq('status', 'processed');
@@ -928,7 +1017,7 @@ export class DashboardService {
     const suggestionMap = new Map<string, {
       count: number;
       restaurants: Set<string>;
-      evidence: { tableId: string; audioUrl: string | null; restaurantName: string; restaurantId: string }[];
+      evidence: { tableId: string; audioUrl: string | null; restaurantName: string; restaurantId: string; managerQuestions: string[]; customerAnswers: string[] }[];
     }>();
 
     for (const record of (data || [])) {
@@ -949,6 +1038,8 @@ export class DashboardService {
               audioUrl: record.audio_url || null,
               restaurantName: restName,
               restaurantId: record.restaurant_id,
+              managerQuestions: record.manager_questions || [],
+              customerAnswers: record.customer_answers || [],
             });
           }
           suggestionMap.set(fb.text, existing);
