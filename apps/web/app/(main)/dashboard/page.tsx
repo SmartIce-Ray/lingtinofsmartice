@@ -1,11 +1,6 @@
 // Dashboard Page - Business metrics and analytics
-// v2.5 - Fixed: Popover uses shift strategy - centers below bubble, shifts to stay in viewport
-// v2.4 - Fixed: Popover uses right positioning when clicked on right side of screen
-// v2.3 - Added: AI optimize button for 话术使用 section with shimmer effect
-// v2.2 - Fixed: Popover positioning now has consistent 16px margins on both sides
-// v2.1 - Added: SWR for stale-while-revalidate caching
-//        Clickable feedback bubbles with conversation popover
-//        Restored: Dish ranking TOP 5 section
+// v3.0 - Product-driven redesign: multi-dimension feedback, speech quality split,
+//         emotion trend arrows, problem-first layout
 
 'use client';
 
@@ -73,6 +68,17 @@ interface DishRankingResponse {
   dishes: DishRanking[];
 }
 
+interface SuggestionItem {
+  text: string;
+  count: number;
+  restaurants: string[];
+  evidence: { tableId: string; audioUrl: string | null; restaurantName: string; restaurantId: string }[];
+}
+
+interface SuggestionsResponse {
+  suggestions: SuggestionItem[];
+}
+
 // Response types for SWR
 interface CoverageResponse {
   periods: CoveragePeriod[];
@@ -80,6 +86,83 @@ interface CoverageResponse {
 
 interface HighlightsResponse {
   questions: ManagerQuestion[];
+}
+
+// Detect feedback category icon from text
+function detectCategoryIcon(text: string): string {
+  const lower = text.toLowerCase();
+  if (/慢|等了|催|久|速度|出菜/.test(lower)) return '⏱️';
+  if (/态度|不耐烦|冷淡|不理|脸色/.test(lower)) return '😐';
+  if (/环境|吵|脏|热|冷|味道大|苍蝇/.test(lower)) return '🏠';
+  if (/服务/.test(lower)) return '😊';
+  return '🍳';
+}
+
+// Classify speech questions as good or needs-improvement
+function classifySpeech(text: string): 'good' | 'improve' {
+  // Too vague or open-ended → needs improvement
+  if (/^(还满意吗|满意吗|还好吗|还行吗|有什么建议|有什么意见|可以吗)\?*[？]?$/.test(text.trim())) return 'improve';
+  if (text.length < 6) return 'improve';
+  // Specific and targeted → good
+  if (/怎么样|觉得|口味|速度|推荐|招牌|特色|第几次/.test(text)) return 'good';
+  return 'good'; // default to good if not clearly vague
+}
+
+// Speech quality reasons
+function getSpeechReason(text: string, quality: 'good' | 'improve'): string {
+  if (quality === 'improve') {
+    if (/满意/.test(text)) return '太笼统，顾客只会说"还行"';
+    if (/建议|意见/.test(text)) return '开放式，顾客不知从何答起';
+    return '话术过短，难以引导深度反馈';
+  }
+  if (/怎么样/.test(text)) return '精准定位问题，引出真实反馈';
+  if (/推荐|招牌|特色/.test(text)) return '顾客积极回应，获得有效反馈';
+  if (/速度|上菜/.test(text)) return '定向服务问题，获得直接回答';
+  if (/第几次/.test(text)) return '建立关系，了解客户忠诚度';
+  return '针对性提问，获得有效反馈';
+}
+
+// Speech quality split component
+function SpeechQualitySplit({ questions }: { questions: ManagerQuestion[] }) {
+  const good = questions.filter(q => classifySpeech(q.text) === 'good');
+  const improve = questions.filter(q => classifySpeech(q.text) === 'improve');
+
+  return (
+    <div className="space-y-4">
+      {good.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-sm">💡</span>
+            <span className="text-xs font-semibold text-gray-600">优秀示范</span>
+          </div>
+          <div className="space-y-2">
+            {good.slice(0, 3).map((q, i) => (
+              <div key={i} className="bg-green-50/60 rounded-lg p-3">
+                <div className="text-sm text-green-800 font-medium">&ldquo;{q.text}&rdquo;</div>
+                <div className="text-xs text-green-600 mt-1">→ {getSpeechReason(q.text, 'good')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {improve.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-sm">⚠️</span>
+            <span className="text-xs font-semibold text-gray-600">可以更好</span>
+          </div>
+          <div className="space-y-2">
+            {improve.slice(0, 3).map((q, i) => (
+              <div key={i} className="bg-amber-50/60 rounded-lg p-3">
+                <div className="text-sm text-amber-800 font-medium">&ldquo;{q.text}&rdquo;</div>
+                <div className="text-xs text-amber-600 mt-1">→ {getSpeechReason(q.text, 'improve')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -137,6 +220,16 @@ export default function DashboardPage() {
     ? new URLSearchParams({ restaurant_id: restaurantId, date }).toString()
     : null;
 
+  // Build yesterday's params for trend comparison
+  const yesterdayDate = (() => {
+    const d = new Date(date);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  })();
+  const yesterdayParams = restaurantId
+    ? new URLSearchParams({ restaurant_id: restaurantId, date: yesterdayDate }).toString()
+    : null;
+
   // SWR hooks for data fetching with stale-while-revalidate
   const { data: coverageData, isLoading: coverageLoading } = useSWR<CoverageResponse>(
     params ? `/api/dashboard/coverage?${params}` : null
@@ -144,11 +237,17 @@ export default function DashboardPage() {
   const { data: sentimentData, isLoading: sentimentLoading } = useSWR<SentimentSummary>(
     params ? `/api/dashboard/sentiment-summary?${params}` : null
   );
+  const { data: yesterdaySentiment } = useSWR<SentimentSummary>(
+    yesterdayParams ? `/api/dashboard/sentiment-summary?${yesterdayParams}` : null
+  );
   const { data: highlightsData, isLoading: highlightsLoading } = useSWR<HighlightsResponse>(
     params ? `/api/dashboard/speech-highlights?${params}` : null
   );
   const { data: dishData, isLoading: dishLoading } = useSWR<DishRankingResponse>(
     params ? `/api/dashboard/dish-ranking?${params}` : null
+  );
+  const { data: suggestionsData } = useSWR<SuggestionsResponse>(
+    restaurantId ? `/api/dashboard/suggestions?restaurant_id=${restaurantId}&days=7` : null
   );
 
   // Derived data with defaults
@@ -156,6 +255,7 @@ export default function DashboardPage() {
   const sentiment = sentimentData ?? null;
   const managerQuestions = highlightsData?.questions ?? [];
   const dishes = dishData?.dishes ?? [];
+  const suggestions = suggestionsData?.suggestions ?? [];
   const loading = coverageLoading || sentimentLoading || highlightsLoading || dishLoading;
 
   // Close popover when clicking outside
@@ -262,143 +362,32 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Sentiment Summary */}
+        {/* Sentiment Summary with Trend Arrows */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <h2 className="text-sm font-medium text-gray-700 mb-3">情绪概览</h2>
           {sentiment ? (
-            <>
-              <div className="flex items-center justify-around py-4">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-green-600">
-                    {sentiment.positive_percent}%
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">正面情绪</div>
-                </div>
-                <div className="h-12 w-px bg-gray-200" />
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-gray-600">
-                    {sentiment.neutral_percent}%
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">中性情绪</div>
-                </div>
-                <div className="h-12 w-px bg-gray-200" />
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-red-500">
-                    {sentiment.negative_percent}%
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">负面情绪</div>
-                </div>
-              </div>
-
-              {/* Feedbacks Section */}
-              {(sentiment.positive_feedbacks?.length > 0 ||
-                sentiment.negative_feedbacks?.length > 0) && (
-                <div className="border-t border-gray-100 pt-3 mt-2">
-                  {/* Positive Feedbacks */}
-                  {sentiment.positive_feedbacks?.length > 0 && (
-                    <div className="mb-3">
-                      <div className="text-xs text-gray-500 mb-2">正面评价</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {sentiment.positive_feedbacks.map((fb: SentimentFeedback, i: number) => (
-                          <button
-                            key={i}
-                            onClick={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setSelectedFeedback({ feedback: fb, type: 'positive', rect });
-                            }}
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 hover:bg-green-100 hover:ring-2 hover:ring-green-300 transition-all cursor-pointer"
-                            style={{
-                              fontSize: `${Math.min(12 + fb.count * 2, 16)}px`,
-                              opacity: Math.max(0.6, 1 - i * 0.1),
-                            }}
-                          >
-                            {fb.text}
-                            {fb.count > 1 && (
-                              <span className="ml-1 text-green-500">×{fb.count}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Negative Feedbacks */}
-                  {sentiment.negative_feedbacks?.length > 0 && (
-                    <div>
-                      <div className="text-xs text-gray-500 mb-2">负面评价</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {sentiment.negative_feedbacks.map((fb: SentimentFeedback, i: number) => (
-                          <button
-                            key={i}
-                            onClick={(e) => {
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              setSelectedFeedback({ feedback: fb, type: 'negative', rect });
-                            }}
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-600 hover:bg-red-100 hover:ring-2 hover:ring-red-300 transition-all cursor-pointer"
-                            style={{
-                              fontSize: `${Math.min(12 + fb.count * 2, 16)}px`,
-                              opacity: Math.max(0.6, 1 - i * 0.1),
-                            }}
-                          >
-                            {fb.text}
-                            {fb.count > 1 && (
-                              <span className="ml-1 text-red-400">×{fb.count}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : !loading ? (
-            <div className="text-center py-4 text-gray-400">暂无数据</div>
-          ) : null}
-        </div>
-
-        {/* Dish Ranking TOP 5 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">菜品提及 TOP 5</h2>
-          {dishes.length > 0 ? (
-            <div className="space-y-3">
-              {dishes.map((dish, i) => {
-                const maxCount = dishes[0]?.mention_count || 1;
-                const barWidth = (dish.mention_count / maxCount) * 100;
+            <div className="flex items-center justify-around py-4">
+              {[
+                { label: '正面😊', pct: sentiment.positive_percent, prevPct: yesterdaySentiment?.positive_percent, color: 'text-green-600', trendUp: 'text-green-500', trendDown: 'text-red-500' },
+                { label: '中性😐', pct: sentiment.neutral_percent, prevPct: yesterdaySentiment?.neutral_percent, color: 'text-gray-600', trendUp: 'text-gray-500', trendDown: 'text-gray-500' },
+                { label: '负面😟', pct: sentiment.negative_percent, prevPct: yesterdaySentiment?.negative_percent, color: 'text-red-500', trendUp: 'text-red-500', trendDown: 'text-green-500' },
+              ].map((item, i) => {
+                const diff = item.prevPct != null ? item.pct - item.prevPct : null;
                 return (
-                  <div key={dish.dish_name} className="flex items-center gap-3">
-                    <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold ${
-                      i === 0 ? 'bg-yellow-100 text-yellow-700' :
-                      i === 1 ? 'bg-gray-100 text-gray-600' :
-                      i === 2 ? 'bg-orange-50 text-orange-600' :
-                      'bg-gray-50 text-gray-400'
-                    }`}>
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-gray-800 truncate">{dish.dish_name}</span>
-                        <span className="text-xs text-gray-400 ml-2 shrink-0">{dish.mention_count}次</span>
+                  <div key={i} className="text-center flex-1">
+                    <div className={`text-3xl font-bold ${item.color}`}>{item.pct}%</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{item.label}</div>
+                    {diff !== null && diff !== 0 && (
+                      <div className={`text-xs mt-0.5 font-medium ${
+                        i === 2 ? (diff > 0 ? item.trendUp : item.trendDown) : (diff > 0 ? item.trendUp : item.trendDown)
+                      }`}>
+                        {diff > 0 ? '↑' : '↓'} {Math.abs(diff)}%
+                        <span className="text-gray-400 font-normal ml-0.5">比昨天</span>
                       </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-400 rounded-full transition-all duration-500"
-                          style={{ width: `${barWidth}%` }}
-                        />
-                      </div>
-                      <div className="flex gap-2 mt-1">
-                        {dish.positive > 0 && (
-                          <span className="text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                            好评 {dish.positive}
-                          </span>
-                        )}
-                        {dish.negative > 0 && (
-                          <span className="text-xs text-red-500 bg-red-50 px-1.5 py-0.5 rounded">
-                            差评 {dish.negative}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    )}
+                    {diff === 0 && (
+                      <div className="text-xs mt-0.5 text-gray-400">— 持平</div>
+                    )}
                   </div>
                 );
               })}
@@ -408,11 +397,115 @@ export default function DashboardPage() {
           ) : null}
         </div>
 
-        {/* Manager Questions - 话术使用 */}
+        {/* Customer Feedback - Multi-dimension (problems first, then highlights) */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <h2 className="text-sm font-medium text-gray-700 mb-3">顾客反馈</h2>
+          {sentiment && (sentiment.negative_feedbacks?.length > 0 || sentiment.positive_feedbacks?.length > 0) ? (
+            <>
+              {/* Problems section */}
+              {sentiment.negative_feedbacks?.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-sm">⚠️</span>
+                    <span className="text-xs font-semibold text-gray-600">需要关注</span>
+                  </div>
+                  <div className="space-y-2">
+                    {sentiment.negative_feedbacks.map((fb, i) => {
+                      const icon = detectCategoryIcon(fb.text);
+                      return (
+                        <button
+                          key={i}
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setSelectedFeedback({ feedback: fb, type: 'negative', rect });
+                          }}
+                          className="w-full text-left bg-red-50/60 rounded-lg p-3 hover:bg-red-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-800">
+                              {icon} {fb.text}
+                            </span>
+                            <span className="text-xs font-semibold text-red-500 bg-red-100 px-2 py-0.5 rounded-full">
+                              {fb.count >= 3 ? '🔴' : '🟡'} {fb.count}桌
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Positive highlights */}
+              {sentiment.positive_feedbacks?.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-sm">👍</span>
+                    <span className="text-xs font-semibold text-gray-600">好评亮点</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sentiment.positive_feedbacks.map((fb, i) => {
+                      const icon = detectCategoryIcon(fb.text);
+                      return (
+                        <button
+                          key={i}
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setSelectedFeedback({ feedback: fb, type: 'positive', rect });
+                          }}
+                          className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                        >
+                          {icon} {fb.text} {fb.count > 1 && <span className="ml-1 text-green-500">{fb.count}桌</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* No negative feedbacks but has positive */}
+              {(!sentiment.negative_feedbacks || sentiment.negative_feedbacks.length === 0) && (
+                <div className="flex items-center gap-2 text-green-600 mb-3 bg-green-50 rounded-lg p-3">
+                  <span>✅</span>
+                  <span className="text-sm font-medium">今日无需特别关注的问题</span>
+                </div>
+              )}
+
+              {/* Customer suggestions */}
+              {suggestions.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-sm">💡</span>
+                    <span className="text-xs font-semibold text-gray-600">顾客建议</span>
+                    <span className="text-xs text-gray-400 ml-auto">近 7 天</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {suggestions.map((item, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between bg-purple-50/60 rounded-lg px-3 py-2"
+                      >
+                        <span className="text-sm text-gray-800">&ldquo;{item.text}&rdquo;</span>
+                        {item.count > 1 && (
+                          <span className="flex-shrink-0 text-xs font-semibold text-purple-600 ml-2">
+                            ×{item.count}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : !loading ? (
+            <div className="text-center py-4 text-gray-400">暂无反馈数据</div>
+          ) : null}
+        </div>
+
+        {/* Manager Questions - 话术使用 (split into good/bad) */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-gray-700">话术使用</h2>
-            {/* AI Optimize Button - Shimmer effect with sparkle icon */}
             <button
               onClick={() => {
                 const question = '请你获取我们最近的桌台访问的话术并且以专业餐饮经营者的角度，告诉我该如何优化这些话术，以获得更好的效果';
@@ -420,11 +513,8 @@ export default function DashboardPage() {
               }}
               className="group relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95"
             >
-              {/* Animated gradient background */}
               <span className="absolute inset-0 animate-shimmer bg-[linear-gradient(110deg,#8b5cf6,45%,#c084fc,55%,#8b5cf6)] bg-[length:200%_100%]" />
-              {/* Inner content with backdrop */}
               <span className="relative flex items-center gap-1.5 text-white">
-                {/* Sparkle/Magic wand icon */}
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" strokeLinecap="round" />
                   <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
@@ -433,22 +523,11 @@ export default function DashboardPage() {
               </span>
             </button>
           </div>
-          <div className="space-y-2">
-            {managerQuestions.length === 0 && !loading && (
-              <div className="text-center py-4 text-gray-400 text-sm">暂无数据</div>
-            )}
-            {managerQuestions.map((q: ManagerQuestion, i: number) => (
-              <div
-                key={i}
-                className="bg-blue-50 rounded-lg p-3 text-sm"
-              >
-                <div className="text-blue-800">"{q.text}"</div>
-                <div className="text-blue-500 text-xs mt-1">
-                  {q.table}桌 · {q.time}
-                </div>
-              </div>
-            ))}
-          </div>
+          {managerQuestions.length > 0 ? (
+            <SpeechQualitySplit questions={managerQuestions} />
+          ) : !loading ? (
+            <div className="text-center py-4 text-gray-400 text-sm">暂无数据</div>
+          ) : null}
         </div>
 
         {/* AI Action Items */}

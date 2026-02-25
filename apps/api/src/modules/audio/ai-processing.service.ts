@@ -12,7 +12,7 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 // Feedback item with sentiment label
 export interface FeedbackItem {
   text: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
+  sentiment: 'positive' | 'negative' | 'neutral' | 'suggestion';
 }
 
 // Simplified MVP result structure (5 dimensions)
@@ -329,7 +329,8 @@ export class AiProcessingService {
   "sentimentScore": 0.5,
   "feedbacks": [
     {"text": "清蒸鲈鱼很新鲜", "sentiment": "positive"},
-    {"text": "上菜太慢", "sentiment": "negative"}
+    {"text": "上菜太慢", "sentiment": "negative"},
+    {"text": "建议加一道冷面", "sentiment": "suggestion"}
   ],
   "managerQuestions": ["店长问的问题1", "店长问的问题2"],
   "customerAnswers": ["顾客的回答1", "顾客的回答2"]
@@ -358,6 +359,12 @@ export class AiProcessingService {
        示例: "太咸了"、"上菜太慢"、"服务态度差"、"不新鲜"、"没什么味道"、"不行"
      neutral: 模糊评价、无法明确判断好坏
        示例: "还行"、"还可以"、"一般"、"马马虎虎"、"跟上次差不多"
+     suggestion: 顾客主动提出的建议、希望或需求（不是对现有事物的抱怨）
+       识别模式: 建议、希望、能不能加、要是有就好了、以后可以、应该有、想吃X但没有、能不能做X、有没有X（主动询问缺失菜品/设施）
+       示例: "建议加个儿童座椅"、"希望有蜂蜜烤面包"、"你们应该加冷面"、"要是有甜点就好了"
+       注意: suggestion 不是负面评价，是顾客表达期望。
+       "要是能快一点就好了"→ negative（抱怨现有速度），不是 suggestion
+       "建议增加一道冷面"→ suggestion（建议新菜品）
    - 否定句式需结合上下文判断：
      "不辣"/"不咸"等：要看顾客是在抱怨还是在回答店长提问
      顾客主动说"不辣，没味道" → negative（在抱怨）

@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Route based on role
     if (data.user.roleCode === 'administrator') {
-      router.push('/admin/dashboard');
+      router.push('/admin/briefing');
     } else if (data.user.roleCode === 'head_chef' || data.user.roleCode === 'chef') {
       router.push('/chef/dashboard');
     } else {

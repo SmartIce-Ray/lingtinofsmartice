@@ -1,9 +1,11 @@
-// Chef Dishes Page — "Problem First" dish feedback with expandable conversation detail
-// Data: GET /api/dashboard/dish-ranking (with negative_feedbacks + contexts)
+// Chef Dishes Page — "Kitchen Feedback" covering all kitchen dimensions
+// (dish quality, speed, temperature, plating, freshness) with action buttons
+// Data: GET /api/dashboard/dish-ranking + GET /api/dashboard/sentiment-summary
 
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
@@ -36,11 +38,55 @@ interface DishRankingResponse {
   dishes: DishRanking[];
 }
 
+// Kitchen-related feedback categories from sentiment summary
+interface SentimentFeedbackContext {
+  text: string;
+  visitId: string;
+  tableId: string;
+  managerQuestions: string[];
+  customerAnswers: string[];
+  transcript: string;
+  audioUrl: string | null;
+}
+
+interface SentimentFeedbackItem {
+  text: string;
+  count: number;
+  contexts?: SentimentFeedbackContext[];
+}
+
+interface SentimentSummaryResponse {
+  negative_feedbacks: SentimentFeedbackItem[];
+  positive_feedbacks: SentimentFeedbackItem[];
+}
+
+// Detect kitchen-related feedback category
+function detectKitchenCategory(text: string): { icon: string; label: string; isKitchen: boolean } {
+  const lower = text.toLowerCase();
+  if (/慢|等了|催|久|速度|出菜/.test(lower)) return { icon: '⏱️', label: '出菜速度', isKitchen: true };
+  if (/凉|温度|冷|不够热|端上来/.test(lower)) return { icon: '🌡️', label: '菜品温度', isKitchen: true };
+  if (/摆盘|卖相|样子/.test(lower)) return { icon: '🎨', label: '卖相', isKitchen: true };
+  if (/新鲜|不新鲜|蔫|变质/.test(lower)) return { icon: '🥬', label: '食材新鲜度', isKitchen: true };
+  if (/态度|不耐烦|冷淡/.test(lower)) return { icon: '😐', label: '服务态度', isKitchen: false };
+  if (/环境|吵|脏/.test(lower)) return { icon: '🏠', label: '环境', isKitchen: false };
+  return { icon: '🍳', label: '菜品口味', isKitchen: true };
+}
+
+// Kitchen problem item (non-dish dimension)
+interface KitchenProblem {
+  icon: string;
+  label: string;
+  count: number;
+  feedbacks: SentimentFeedbackItem[];
+}
+
 export default function ChefDishesPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const restaurantId = user?.restaurantId;
   const [selectedDate, setSelectedDate] = useState('今日');
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
+  const [expandedKitchen, setExpandedKitchen] = useState<string | null>(null);
 
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -86,6 +132,14 @@ export default function ChefDishesPage() {
     params ? `/api/dashboard/dish-ranking?${params}` : null,
   );
 
+  // Also fetch sentiment summary for non-dish kitchen problems
+  const sentimentParams = restaurantId
+    ? new URLSearchParams({ restaurant_id: restaurantId, date }).toString()
+    : null;
+  const { data: sentimentData } = useSWR<SentimentSummaryResponse>(
+    sentimentParams ? `/api/dashboard/sentiment-summary?${sentimentParams}` : null,
+  );
+
   const dishes = dishData?.dishes ?? [];
 
   // Split dishes into problem / good groups
@@ -95,6 +149,38 @@ export default function ChefDishesPage() {
   const goodDishes = dishes
     .filter((d) => d.negative === 0)
     .sort((a, b) => b.positive - a.positive);
+
+  // Extract kitchen-related non-dish problems from sentiment data
+  const kitchenProblems: KitchenProblem[] = [];
+  const kitchenHighlights: { icon: string; label: string; count: number }[] = [];
+
+  if (sentimentData) {
+    // Group negative feedbacks by kitchen category
+    const catMap = new Map<string, { icon: string; label: string; items: SentimentFeedbackItem[] }>();
+    for (const fb of sentimentData.negative_feedbacks || []) {
+      const cat = detectKitchenCategory(fb.text);
+      if (!cat.isKitchen) continue;
+      // Skip dish_quality — those are already in dishData
+      if (cat.label === '菜品口味') continue;
+      const key = cat.label;
+      const existing = catMap.get(key) || { icon: cat.icon, label: cat.label, items: [] };
+      existing.items.push(fb);
+      catMap.set(key, existing);
+    }
+    Array.from(catMap.values()).forEach(val => {
+      const totalCount = val.items.reduce((sum, fb) => sum + fb.count, 0);
+      kitchenProblems.push({ icon: val.icon, label: val.label, count: totalCount, feedbacks: val.items });
+    });
+    kitchenProblems.sort((a, b) => b.count - a.count);
+
+    // Kitchen-related positive feedbacks
+    for (const fb of sentimentData.positive_feedbacks || []) {
+      const cat = detectKitchenCategory(fb.text);
+      if (cat.isKitchen && cat.label !== '菜品口味') {
+        kitchenHighlights.push({ icon: cat.icon, label: `${cat.label} ${fb.count}桌好评`, count: fb.count });
+      }
+    }
+  }
 
   // Collect all contexts for an expanded dish
   const getContextsForDish = (dish: DishRanking): Array<FeedbackContext & { feedbackText: string }> => {
@@ -112,7 +198,7 @@ export default function ChefDishesPage() {
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="text-base font-semibold text-gray-800">菜品反馈</div>
+          <div className="text-base font-semibold text-gray-800">厨房反馈</div>
           <UserMenu />
         </div>
         {/* Date toggle */}
@@ -140,24 +226,125 @@ export default function ChefDishesPage() {
           <div className="text-center py-12 text-gray-400 text-sm">加载中...</div>
         )}
 
-        {!isLoading && dishes.length === 0 && (
+        {!isLoading && dishes.length === 0 && kitchenProblems.length === 0 && (
           <div className="text-center py-12 text-gray-400 text-sm">
-            暂无菜品反馈记录
+            暂无厨房反馈记录
           </div>
         )}
 
-        {!isLoading && dishes.length > 0 && (
+        {!isLoading && (dishes.length > 0 || kitchenProblems.length > 0) && (
           <div className="space-y-6">
-            {/* ── Needs Attention Section ── */}
+            {/* ── Kitchen Dimension Problems (speed, temp, etc.) ── */}
+            {kitchenProblems.length > 0 && (
+              <section>
+                {/* Only show section header if there are also dish problems */}
+                {(problemDishes.length > 0 || kitchenProblems.length > 0) && (
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-base">⚠️</span>
+                    <span className="text-sm font-semibold text-amber-800">需要关注</span>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {kitchenProblems.map((kp) => {
+                    const isExpanded = expandedKitchen === kp.label;
+                    return (
+                      <div key={kp.label} className="bg-white rounded-2xl shadow-sm border border-amber-100/60 overflow-hidden">
+                        <button
+                          onClick={() => {
+                            if (isExpanded) stopAudio();
+                            setExpandedKitchen(isExpanded ? null : kp.label);
+                          }}
+                          className="w-full px-4 py-3.5 text-left active:bg-gray-50/50"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[15px] font-semibold text-gray-800">
+                              {kp.icon} {kp.label}
+                            </span>
+                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                              kp.count >= 3 ? 'text-red-600 bg-red-50' : 'text-amber-600 bg-amber-50'
+                            }`}>
+                              {kp.count >= 3 ? '🔴' : '🟡'} {kp.count}桌反馈
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {kp.feedbacks.map(fb => (
+                              <span key={fb.text} className="text-[13px] text-red-700/80 bg-red-50/80 border border-red-100 rounded-lg px-2.5 py-1">
+                                &ldquo;{fb.text}&rdquo;{fb.count > 1 && <span className="ml-1 text-red-500/60">&times;{fb.count}</span>}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-end mt-2">
+                            <span className="text-xs text-blue-500">{isExpanded ? '收起 ▴' : '查看对话 ▾'}</span>
+                          </div>
+                        </button>
+
+                        {/* Expanded: show contexts + action buttons */}
+                        {isExpanded && (
+                          <div className="border-t border-amber-100/60 bg-stone-50/50 px-4 pb-4 pt-3 space-y-3">
+                            {kp.feedbacks.map(fb => (
+                              fb.contexts || []).map((ctx, i) => (
+                                <div key={`${ctx.visitId}-${i}`}>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-sm font-medium text-gray-700">{ctx.tableId}桌</span>
+                                    {ctx.audioUrl && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleAudioToggle(ctx.visitId, ctx.audioUrl!); }}
+                                        className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                                          playingVisitId === ctx.visitId ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600'
+                                        }`}
+                                      >
+                                        {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 原声'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {ctx.customerAnswers.length > 0 && (
+                                    <div className="text-[13px] text-gray-700 bg-white rounded-lg px-3 py-2 border border-gray-100">
+                                      <span className="text-gray-400 font-medium">顾客：</span>{ctx.customerAnswers.join(' ')}
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+                                ✅ 已改善
+                              </button>
+                              <button
+                                onClick={() => router.push('/chef/dashboard')}
+                                className="flex-1 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                              >
+                                📋 查看待办
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* ── Dish Quality: Needs Attention Section ── */}
             {problemDishes.length > 0 && (
               <section>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-base">⚠️</span>
-                  <span className="text-sm font-semibold text-amber-800">需要关注</span>
-                  <span className="ml-auto text-xs text-amber-700/70 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
-                    {problemDishes.length}道
-                  </span>
-                </div>
+                {kitchenProblems.length === 0 && (
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-base">⚠️</span>
+                    <span className="text-sm font-semibold text-amber-800">需要关注</span>
+                  </div>
+                )}
+                {kitchenProblems.length > 0 && (
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm">🍳</span>
+                    <span className="text-xs font-semibold text-gray-500">菜品口味问题</span>
+                    <span className="ml-auto text-xs text-amber-700/70 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                      {problemDishes.length}道
+                    </span>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   {problemDishes.map((dish) => {
@@ -279,6 +466,18 @@ export default function ChefDishesPage() {
                                 )}
                               </div>
                             ))}
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+                                ✅ 已改善
+                              </button>
+                              <button
+                                onClick={() => router.push('/chef/dashboard')}
+                                className="flex-1 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                              >
+                                📋 查看待办
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -288,24 +487,28 @@ export default function ChefDishesPage() {
               </section>
             )}
 
-            {/* ── Doing Well Section ── */}
-            {goodDishes.length > 0 && (
+            {/* ── Doing Well Section (dishes + kitchen highlights) ── */}
+            {(goodDishes.length > 0 || kitchenHighlights.length > 0) && (
               <section>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-base">👍</span>
-                  <span className="text-sm font-semibold text-emerald-800">表现不错</span>
-                  <span className="ml-auto text-xs text-emerald-700/70 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
-                    {goodDishes.length}道
-                  </span>
+                  <span className="text-sm font-semibold text-emerald-800">好评亮点</span>
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">
+                  {/* Non-dish kitchen highlights (e.g., speed praised) */}
+                  {kitchenHighlights.map((kh) => (
+                    <div key={kh.label} className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-gray-700">{kh.icon} {kh.label}</span>
+                    </div>
+                  ))}
+                  {/* Dish highlights */}
                   {goodDishes.map((dish) => (
                     <div
                       key={dish.dish_name}
                       className="flex items-center justify-between px-4 py-3"
                     >
-                      <span className="text-sm text-gray-700">{dish.dish_name}</span>
+                      <span className="text-sm text-gray-700">🍳 {dish.dish_name}</span>
                       <span className="text-xs text-emerald-600 font-medium">
                         {dish.positive}桌好评
                       </span>

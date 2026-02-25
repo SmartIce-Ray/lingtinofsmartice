@@ -1,4 +1,5 @@
 // Dashboard Service - Analytics business logic
+// v2.2 - Added: getBriefing() for admin daily briefing (cross-restaurant anomaly detection)
 // v2.1 - Added: getRestaurantDetail() for restaurant detail page
 // v2.0 - Added: getRestaurantsOverview() for admin dashboard with sentiment scores
 // v1.9 - Added: Multi-restaurant support for administrator role
@@ -6,9 +7,9 @@
 //        - getCoverageStats() supports restaurant_id=all for multi-store summary
 //        - getSentimentSummary() supports restaurant_id=all for aggregated data
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
-import { toChinaDateString } from '../../common/utils/date';
+import { getChinaDateString, toChinaDateString } from '../../common/utils/date';
 
 // Interface for feedback with conversation context (used in sentiment summary)
 export interface FeedbackWithContext {
@@ -30,8 +31,25 @@ export interface NegContext {
   audioUrl: string | null;
 }
 
+// Severity for briefing problem cards
+type BriefingSeverity = 'red' | 'yellow';
+// Category icons for briefing
+type BriefingCategory = 'dish_quality' | 'service_speed' | 'staff_attitude' | 'environment' | 'coverage' | 'sentiment' | 'no_visits' | 'action_overdue';
+
+export interface BriefingProblem {
+  severity: BriefingSeverity;
+  category: BriefingCategory;
+  restaurantId: string;
+  restaurantName: string;
+  title: string;
+  evidence: { text: string; tableId: string; audioUrl: string | null }[];
+  metric?: string;
+}
+
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(private readonly supabase: SupabaseService) {}
 
   // Get all active restaurants (for administrator multi-store view)
@@ -629,6 +647,326 @@ export class DashboardService {
         avg_sentiment: avgSentiment !== null ? Math.round(avgSentiment * 100) / 100 : null,
       },
     };
+  }
+
+  // Get daily briefing for admin: cross-restaurant anomaly detection + problem cards
+  async getBriefing(date: string) {
+    if (this.supabase.isMockMode()) {
+      return {
+        date,
+        greeting: '早安',
+        problems: [],
+        healthy_count: 1,
+        avg_sentiment: 0.84,
+        avg_coverage: 91,
+      };
+    }
+
+    const client = this.supabase.getClient();
+
+    // 1. Get all active restaurants
+    const { data: restaurants, error: restError } = await client
+      .from('master_restaurant')
+      .select('id, restaurant_name')
+      .eq('is_active', true);
+    if (restError) throw restError;
+    if (!restaurants || restaurants.length === 0) {
+      return { date, greeting: this.getGreeting(), problems: [], healthy_count: 0, avg_sentiment: null, avg_coverage: 0 };
+    }
+
+    const restMap = new Map(restaurants.map(r => [r.id, r.restaurant_name]));
+
+    // 2. Fetch visit records, action items, table sessions, and yesterday's data in parallel
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = toChinaDateString(yesterday);
+
+    const [visitsRes, actionsRes, sessionsRes, yesterdayVisitsRes] = await Promise.all([
+      client.from('lingtin_visit_records')
+        .select('id, restaurant_id, table_id, feedbacks, sentiment_score, audio_url, keywords, status')
+        .eq('visit_date', date)
+        .eq('status', 'processed'),
+      client.from('lingtin_action_items')
+        .select('id, restaurant_id, category, suggestion_text, priority, status, created_at')
+        .in('status', ['pending', 'acknowledged'])
+        .eq('priority', 'high'),
+      client.from('lingtin_table_sessions')
+        .select('restaurant_id, period')
+        .eq('session_date', date),
+      client.from('lingtin_visit_records')
+        .select('restaurant_id, sentiment_score')
+        .eq('visit_date', yesterdayStr)
+        .eq('status', 'processed'),
+    ]);
+
+    const visits = visitsRes.data || [];
+    const actions = actionsRes.data || [];
+    const sessions = sessionsRes.data || [];
+    const yesterdayVisits = yesterdayVisitsRes.data || [];
+
+    // 3. Per-restaurant anomaly detection
+    const problems: BriefingProblem[] = [];
+    let totalSentimentSum = 0;
+    let totalSentimentCount = 0;
+    let totalOpen = 0;
+    let totalVisit = 0;
+
+    for (const rest of restaurants) {
+      const restVisits = visits.filter(v => v.restaurant_id === rest.id);
+      const restSessions = sessions.filter(s => s.restaurant_id === rest.id);
+      const restYesterdayVisits = yesterdayVisits.filter(v => v.restaurant_id === rest.id);
+
+      // Aggregate sentiment
+      const scores = restVisits.filter(v => v.sentiment_score !== null).map(v => v.sentiment_score);
+      const avgSentiment = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+      if (avgSentiment !== null) {
+        totalSentimentSum += avgSentiment * scores.length;
+        totalSentimentCount += scores.length;
+      }
+
+      // Coverage
+      const openCount = restSessions.length;
+      const visitCount = restVisits.length;
+      totalOpen += openCount;
+      totalVisit += visitCount;
+      const coverage = openCount > 0 ? Math.round((visitCount / openCount) * 100) : 0;
+
+      // --- Anomaly: no visits ---
+      if (restVisits.length === 0 && openCount > 0) {
+        problems.push({
+          severity: 'yellow',
+          category: 'no_visits',
+          restaurantId: rest.id,
+          restaurantName: rest.restaurant_name,
+          title: '当天无桌访记录',
+          evidence: [],
+          metric: `开台 ${openCount} 桌，0 条桌访`,
+        });
+        continue;
+      }
+
+      // --- Anomaly: low sentiment ---
+      if (avgSentiment !== null && avgSentiment < 0.5) {
+        problems.push({
+          severity: 'red',
+          category: 'sentiment',
+          restaurantId: rest.id,
+          restaurantName: rest.restaurant_name,
+          title: '整体情绪偏低',
+          evidence: [],
+          metric: `日均情绪 ${(avgSentiment).toFixed(2)}`,
+        });
+      }
+
+      // --- Anomaly: low coverage ---
+      if (openCount > 0 && coverage < 70) {
+        // Check if yesterday was higher
+        const yesterdayCount = restYesterdayVisits.length;
+        const diffText = yesterdayCount > visitCount
+          ? `昨日 ${yesterdayCount} 条，今日 ${visitCount} 条`
+          : `覆盖率 ${coverage}%`;
+        problems.push({
+          severity: 'yellow',
+          category: 'coverage',
+          restaurantId: rest.id,
+          restaurantName: rest.restaurant_name,
+          title: '桌访覆盖率偏低',
+          evidence: [],
+          metric: diffText,
+        });
+      }
+
+      // --- Anomaly: negative feedbacks by category ---
+      // Collect all negative feedbacks with category detection
+      const categoryFeedbacks = new Map<BriefingCategory, { text: string; tableId: string; audioUrl: string | null }[]>();
+
+      for (const visit of restVisits) {
+        const feedbacks = visit.feedbacks || [];
+        const keywords = visit.keywords || [];
+
+        for (const fb of feedbacks) {
+          if (typeof fb === 'object' && fb.sentiment === 'negative' && fb.text) {
+            const cat = this.detectFeedbackCategory(fb.text, keywords);
+            const existing = categoryFeedbacks.get(cat) || [];
+            existing.push({
+              text: fb.text,
+              tableId: visit.table_id,
+              audioUrl: visit.audio_url || null,
+            });
+            categoryFeedbacks.set(cat, existing);
+          }
+        }
+      }
+
+      // Generate problem cards for categories with ≥2 negative feedbacks
+      for (const [cat, items] of categoryFeedbacks) {
+        if (items.length >= 2) {
+          const catLabels: Record<BriefingCategory, string> = {
+            dish_quality: '菜品差评',
+            service_speed: '上菜速度投诉',
+            staff_attitude: '服务态度问题',
+            environment: '环境问题',
+            coverage: '', sentiment: '', no_visits: '', action_overdue: '',
+          };
+          const catIcons: Record<BriefingCategory, string> = {
+            dish_quality: '🍳', service_speed: '⏱️', staff_attitude: '😐', environment: '🏠',
+            coverage: '', sentiment: '', no_visits: '', action_overdue: '',
+          };
+          problems.push({
+            severity: items.length >= 3 ? 'red' : 'yellow',
+            category: cat,
+            restaurantId: rest.id,
+            restaurantName: rest.restaurant_name,
+            title: `${catIcons[cat] || ''} ${catLabels[cat] || cat}（${items.length}桌）`,
+            evidence: items.slice(0, 3),
+          });
+        }
+      }
+
+      // --- Anomaly: overdue high-priority actions ---
+      const restOverdue = actions.filter(a => {
+        if (a.restaurant_id !== rest.id) return false;
+        const created = new Date(a.created_at);
+        const now = new Date();
+        const daysDiff = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+        return daysDiff > 3;
+      });
+      if (restOverdue.length > 0) {
+        problems.push({
+          severity: 'yellow',
+          category: 'action_overdue',
+          restaurantId: rest.id,
+          restaurantName: rest.restaurant_name,
+          title: `${restOverdue.length} 条高优先级建议超 3 天未处理`,
+          evidence: [],
+        });
+      }
+    }
+
+    // Sort problems: red first, then yellow; within same severity by evidence count desc
+    problems.sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === 'red' ? -1 : 1;
+      return b.evidence.length - a.evidence.length;
+    });
+
+    const healthyCount = restaurants.length - new Set(problems.map(p => p.restaurantId)).size;
+    const overallAvgSentiment = totalSentimentCount > 0
+      ? Math.round((totalSentimentSum / totalSentimentCount) * 100) / 100
+      : null;
+    const overallCoverage = totalOpen > 0 ? Math.round((totalVisit / totalOpen) * 100) : 0;
+
+    return {
+      date,
+      greeting: this.getGreeting(),
+      problems,
+      healthy_count: healthyCount,
+      restaurant_count: restaurants.length,
+      avg_sentiment: overallAvgSentiment,
+      avg_coverage: overallCoverage,
+    };
+  }
+
+  // Detect feedback category from text and keywords
+  private detectFeedbackCategory(text: string, keywords: string[]): BriefingCategory {
+    const lower = text.toLowerCase();
+    const allText = [lower, ...keywords.map(k => k.toLowerCase())].join(' ');
+
+    if (/慢|等了|催|久|速度|出菜/.test(allText)) return 'service_speed';
+    if (/态度|不耐烦|冷淡|不理|脸色/.test(allText)) return 'staff_attitude';
+    if (/环境|吵|脏|热|冷|味道大|苍蝇/.test(allText)) return 'environment';
+    return 'dish_quality';
+  }
+
+  // Get greeting based on time of day
+  private getGreeting(): string {
+    const hour = new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false });
+    const h = parseInt(hour, 10);
+    if (h < 12) return '早安';
+    if (h < 18) return '下午好';
+    return '晚上好';
+  }
+
+  // Get customer suggestions aggregated from feedbacks with sentiment==='suggestion'
+  // Supports restaurant_id=all (cross-restaurant) or single restaurant UUID
+  async getSuggestions(restaurantId: string, days: number) {
+    if (this.supabase.isMockMode()) {
+      return { suggestions: [] };
+    }
+
+    const client = this.supabase.getClient();
+
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+
+    let query = client
+      .from('lingtin_visit_records')
+      .select('id, restaurant_id, table_id, feedbacks, audio_url')
+      .gte('visit_date', toChinaDateString(startDate))
+      .lte('visit_date', toChinaDateString(endDate))
+      .eq('status', 'processed');
+
+    if (restaurantId !== 'all') {
+      query = query.eq('restaurant_id', restaurantId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    // Build restaurant name lookup if cross-restaurant
+    let restMap = new Map<string, string>();
+    if (restaurantId === 'all') {
+      const { data: restaurants } = await client
+        .from('master_restaurant')
+        .select('id, restaurant_name')
+        .eq('is_active', true);
+      restMap = new Map((restaurants || []).map(r => [r.id, r.restaurant_name]));
+    }
+
+    // Collect all suggestion feedbacks
+    const suggestionMap = new Map<string, {
+      count: number;
+      restaurants: Set<string>;
+      evidence: { tableId: string; audioUrl: string | null; restaurantName: string; restaurantId: string }[];
+    }>();
+
+    for (const record of (data || [])) {
+      const feedbacks = record.feedbacks || [];
+      for (const fb of feedbacks) {
+        if (typeof fb === 'object' && fb.sentiment === 'suggestion' && fb.text) {
+          const existing = suggestionMap.get(fb.text) || {
+            count: 0,
+            restaurants: new Set<string>(),
+            evidence: [],
+          };
+          existing.count++;
+          const restName = restMap.get(record.restaurant_id) || '';
+          existing.restaurants.add(restName || record.restaurant_id);
+          if (existing.evidence.length < 3) {
+            existing.evidence.push({
+              tableId: record.table_id,
+              audioUrl: record.audio_url || null,
+              restaurantName: restName,
+              restaurantId: record.restaurant_id,
+            });
+          }
+          suggestionMap.set(fb.text, existing);
+        }
+      }
+    }
+
+    // Sort by count descending
+    const suggestions = Array.from(suggestionMap.entries())
+      .map(([text, data]) => ({
+        text,
+        count: data.count,
+        restaurants: Array.from(data.restaurants),
+        evidence: data.evidence,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return { suggestions };
   }
 
   // Get cumulative motivation stats for a restaurant (all-time totals)

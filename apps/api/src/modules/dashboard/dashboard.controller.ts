@@ -1,4 +1,5 @@
 // Dashboard Controller - API endpoints for analytics
+// v1.6 - Added: /briefing endpoint for admin daily briefing (anomaly detection)
 // v1.5 - Added: /restaurant/:id endpoint for restaurant detail view
 // v1.4 - Added: /restaurants-overview endpoint for admin dashboard with sentiment scores
 // v1.3 - Added: /restaurants endpoint for multi-store admin view
@@ -10,6 +11,12 @@ import { getChinaDateString } from '../../common/utils/date';
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
+
+  // GET /api/dashboard/briefing - Admin daily briefing with anomaly detection
+  @Get('briefing')
+  async getBriefing(@Query('date') date?: string) {
+    return this.dashboardService.getBriefing(date || getChinaDateString());
+  }
 
   // GET /api/dashboard/restaurants - Get all restaurants for admin multi-store view
   @Get('restaurants')
@@ -82,6 +89,18 @@ export class DashboardController {
     return this.dashboardService.getSpeechHighlights(
       restaurantId,
       date || getChinaDateString(),
+    );
+  }
+
+  // GET /api/dashboard/suggestions - Customer suggestions aggregated from feedbacks
+  @Get('suggestions')
+  async getSuggestions(
+    @Query('restaurant_id') restaurantId: string,
+    @Query('days') days?: string,
+  ) {
+    return this.dashboardService.getSuggestions(
+      restaurantId,
+      parseInt(days || '7', 10),
     );
   }
 
