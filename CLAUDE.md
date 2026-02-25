@@ -67,6 +67,7 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **角色路由模式** — `master_employee.role_code` 是自由文本字段，新增角色需改 3 处：`AuthContext.tsx` login 路由、`app/page.tsx` 首页重定向、新建 `app/<role>/layout.tsx` + `<Role>BottomNav`。当前角色：`administrator`→`/admin/`、`manager`→`/recorder`、`head_chef`→`/chef/`。API 端点无角色守卫，全靠 `restaurant_id` 隔离数据
 - **产品使用指南同步更新** — 每次功能迭代后，同步更新 `docs/user-guides/` 对应角色的指南，记录功能变更与最佳实践。**按角色分文件**（`store-manager.md`、`management.md`、`staff.md`），**每个角色一份完整文件，不再拆分成子目录或多个小文件**
 - **综合产品指南同步更新** — 每次功能迭代后，同步更新 `docs/PRODUCT-GUIDE.md`（综合使用指南 + 面向用户的版本更新记录）。新增角色时需在该文档中增加对应的使用指南章节
+- **产品指南更新触发规则** — 当用户说"更新产品指南使用说明"时，对比 `docs/PRODUCT-GUIDE.md` 头部版本号与 `CHANGELOG.md` 最新版本号，从上次更新的版本开始，将所有后续迭代的功能变更同步到 PRODUCT-GUIDE.md + `docs/user-guides/` 对应角色文件 + README.md 版本号
 - **DashScope API 注意** — 提交用 `/api/v1/services/audio/asr/transcription`，轮询用 `/api/v1/tasks/{id}`，两个路径不同；`transcription_url` 是预签名 OSS URL，不需要 Authorization header
 - **STT 回退模式** — DashScope 优先，失败或未配置自动回退讯飞；`extractTranscript` 失败必须抛异常（不能返回空串），否则回退不触发；讯飞收到非零 code 时若已有部分结果则 resolve 而非 reject（防止 11203 等错误丢弃已转写内容）
 - **AI 分析模型** — OpenRouter → DeepSeek Chat V3（`deepseek/deepseek-chat-v3-0324`），无 fallback；中国区部署不可用 Google Gemini / Anthropic Claude / OpenAI
@@ -190,6 +191,6 @@ master_employee (1)   ──< visit_records (N)
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
 | PR #7: 厨师长角色 + CHANGELOG + 综合产品指南 | feat/meeting-recording | PR 已创建，待 Jeremy merge | PR: https://github.com/JeremyDong22/lingtinofsmartice/pull/7 |
-| 全角色产品体验升级 v1.3.0 | feat/meeting-recording | ✅ 代码完成，待用户验证 | 管理层简报页 + 店长看板改造（全维度反馈/话术分优劣/情绪趋势）+ 厨师长扩展（厨房反馈/待办优先级）+ AI 智库个性化。build 通过。REQ-001~003 |
+| 文档同步 v1.3.1 + v1.3.2 | feat/meeting-recording | ✅ 完成 | PRODUCT-GUIDE.md 新增管理层章节 + management.md 重写（4页面）+ 店长/厨师长/README 更新 |
 | 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 无效。线上 Zeabur 有正确 key 所以生产正常 |
 | 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API，本地后端因 service key 无效运行在 MOCK MODE |
