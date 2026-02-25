@@ -1,5 +1,5 @@
 // Recording History Component - Display list of recordings with status
-// v1.5 - Added expandable transcript view for completed recordings
+// v1.6 - Added status summary bar + failed items pinned to top
 
 'use client';
 
@@ -252,16 +252,49 @@ export function RecordingHistory({
     );
   }
 
+  // Status counts for summary bar
+  const completedCount = recordings.filter(r => r.status === 'processed' || r.status === 'completed').length;
+  const processingCount = recordings.filter(r => r.status === 'processing' || r.status === 'uploading' || r.status === 'pending').length;
+  const failedCount = recordings.filter(r => r.status === 'error').length;
+
+  // Sort: failed first, then by timestamp descending
+  const sorted = [...recordings].sort((a, b) => {
+    if (a.status === 'error' && b.status !== 'error') return -1;
+    if (a.status !== 'error' && b.status === 'error') return 1;
+    return b.timestamp - a.timestamp;
+  });
+
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100">
         <h3 className="text-sm font-medium text-gray-700">
           {title} ({recordings.length})
         </h3>
+        {/* Status summary bar */}
+        <div className="flex items-center gap-3 mt-1.5 text-xs">
+          {completedCount > 0 && (
+            <span className="text-green-600">✅ {completedCount}条完成</span>
+          )}
+          {processingCount > 0 && (
+            <span className="text-yellow-600">⏳ {processingCount}条处理中</span>
+          )}
+          {failedCount > 0 && (
+            <button
+              onClick={() => {
+                // Scroll to first failed item or trigger retry
+                const firstFailed = sorted.find(r => r.status === 'error');
+                if (firstFailed && onRetry) onRetry(firstFailed.id);
+              }}
+              className="text-red-600 hover:text-red-700"
+            >
+              ❌ {failedCount}条失败（点击重试）
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="divide-y divide-gray-50">
-        {recordings.map((recording) => (
+        {sorted.map((recording) => (
           <SwipeableRow
             key={recording.id}
             onDelete={() => onDelete?.(recording.id)}

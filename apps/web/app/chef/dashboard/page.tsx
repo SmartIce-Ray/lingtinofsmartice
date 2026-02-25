@@ -1,5 +1,5 @@
-// Chef Dashboard - Action items filtered for kitchen (dish_quality)
-// Shows: quick stats → pre-meal reminders (yesterday unresolved) → today's tasks
+// Chef Dashboard - Action items for all kitchen-related categories
+// Shows: quick stats → priority items → pre-meal reminders → today's tasks
 
 'use client';
 
@@ -13,11 +13,28 @@ import { getDateForSelection } from '@/lib/date-utils';
 import type { ActionItem, ActionItemsResponse } from '@/lib/action-item-constants';
 import { CATEGORY_LABELS, PRIORITY_CONFIG, STATUS_CONFIG } from '@/lib/action-item-constants';
 
-// Filter: kitchen-relevant items
+// Category icons for kitchen-related items
+const KITCHEN_CATEGORY_ICONS: Record<string, string> = {
+  dish_quality: '🍳',
+  service_speed: '⏱️',
+  environment: '🏠',
+  staff_attitude: '😐',
+  other: '📋',
+};
+
+// Filter: kitchen-relevant items (expanded to include speed, temperature, etc.)
 function isKitchenRelevant(item: ActionItem): boolean {
   if (item.category === 'dish_quality') return true;
-  if (/厨师|厨房|后厨|菜品|出品/.test(item.suggestion_text)) return true;
+  if (item.category === 'service_speed') return true;
+  if (/厨师|厨房|后厨|菜品|出品|出菜|上菜|温度|摆盘|食材|新鲜/.test(item.suggestion_text)) return true;
   return false;
+}
+
+// Calculate priority score: frequency × recency
+function getPriorityScore(item: ActionItem): number {
+  const evidenceCount = item.evidence?.length || 1;
+  const isHigh = item.priority === 'high' ? 2 : item.priority === 'medium' ? 1 : 0;
+  return evidenceCount * (1 + isHigh);
 }
 
 export default function ChefDashboardPage() {
@@ -43,10 +60,19 @@ export default function ChefDashboardPage() {
     .filter(isKitchenRelevant)
     .filter(a => a.status === 'pending' || a.status === 'acknowledged');
 
+  // Separate priority items (top 2 by score) from others
+  const allPending = [...todayActions, ...yesterdayUnresolved]
+    .filter(a => a.status === 'pending' || a.status === 'acknowledged')
+    .sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
+  const priorityItems = allPending.slice(0, 2);
+  const priorityIds = new Set(priorityItems.map(a => a.id));
+  const otherTodayActions = todayActions.filter(a => !priorityIds.has(a.id));
+  const otherYesterdayUnresolved = yesterdayUnresolved.filter(a => !priorityIds.has(a.id));
+
   // Stats
-  const pendingCount = todayActions.filter(a => a.status === 'pending').length + yesterdayUnresolved.length;
-  const yesterdayNegativeCount = (yesterdayData?.actions ?? [])
-    .filter(a => a.category === 'dish_quality')
+  const pendingCount = allPending.length;
+  const yesterdayKitchenCount = (yesterdayData?.actions ?? [])
+    .filter(isKitchenRelevant)
     .length;
 
   // Update status handler
@@ -96,8 +122,8 @@ export default function ChefDashboardPage() {
             <div className="text-xs text-gray-500 mt-1">待处理任务</div>
           </div>
           <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-            <div className="text-2xl font-bold text-yellow-600">{yesterdayNegativeCount}</div>
-            <div className="text-xs text-gray-500 mt-1">昨日菜品投诉</div>
+            <div className="text-2xl font-bold text-yellow-600">{yesterdayKitchenCount}</div>
+            <div className="text-xs text-gray-500 mt-1">昨日厨房问题</div>
           </div>
         </div>
 
@@ -105,14 +131,34 @@ export default function ChefDashboardPage() {
           <div className="text-center py-8 text-gray-400 text-sm">加载中...</div>
         )}
 
-        {/* Pre-meal reminders: yesterday unresolved dish_quality */}
-        {!isLoading && yesterdayUnresolved.length > 0 && (
+        {/* Priority items — top 2 most critical */}
+        {!isLoading && priorityItems.length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-1.5">
+              <span>🔥</span> 建议优先处理
+            </h2>
+            <div className="space-y-3">
+              {priorityItems.map((item) => (
+                <ActionCard
+                  key={item.id}
+                  item={item}
+                  updatingId={updatingId}
+                  onUpdateStatus={handleUpdateStatus}
+                  highlight
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Pre-meal reminders: yesterday unresolved (excluding priority items) */}
+        {!isLoading && otherYesterdayUnresolved.length > 0 && (
           <section>
             <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
               <span>📋</span> 餐前关注
             </h2>
             <div className="space-y-3">
-              {yesterdayUnresolved.map((item) => (
+              {otherYesterdayUnresolved.map((item) => (
                 <ActionCard
                   key={item.id}
                   item={item}
@@ -124,20 +170,20 @@ export default function ChefDashboardPage() {
           </section>
         )}
 
-        {/* Today's tasks */}
+        {/* Today's tasks (excluding priority items) */}
         {!isLoading && (
           <section>
             <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-              <span>📋</span> 今日待办
+              <span>📋</span> 其他待办
             </h2>
-            {todayActions.length === 0 ? (
+            {otherTodayActions.length === 0 && priorityItems.length === 0 ? (
               <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
                 <div className="text-green-500 text-lg mb-1">✅</div>
                 <p className="text-sm text-gray-500">今日暂无厨房相关任务</p>
               </div>
-            ) : (
+            ) : otherTodayActions.length === 0 ? null : (
               <div className="space-y-3">
-                {todayActions.map((item) => (
+                {otherTodayActions.map((item) => (
                   <ActionCard
                     key={item.id}
                     item={item}
@@ -167,10 +213,12 @@ function ActionCard({
   item,
   updatingId,
   onUpdateStatus,
+  highlight,
 }: {
   item: ActionItem;
   updatingId: string | null;
   onUpdateStatus: (id: string, status: string, note?: string) => void;
+  highlight?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const priority = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.medium;
@@ -181,6 +229,7 @@ function ActionCard({
     <div className={`bg-white rounded-2xl p-4 shadow-sm border ${
       item.status === 'resolved' ? 'border-green-200 bg-green-50/50' :
       item.status === 'acknowledged' ? 'border-blue-200 bg-blue-50/30' :
+      highlight ? 'border-red-200 bg-red-50/30' :
       'border-gray-200'
     }`}>
       {/* Header */}

@@ -74,6 +74,7 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **处理流水线** — STT(DashScope→讯飞) → 本地清洗(硬编码规则，去语气词) → AI 分析(DeepSeek) → 存库；三步独立，任一步失败不影响已完成步骤的 log，audio_url 始终保留可重跑
 - **面向店长的内容** — 讲功能价值时站在店长角度（省时间、不遗漏、被认可），不要暗示"做给老板看"或"被老板监控"。强调"你的用心会被看见"，而非"老板能看到你的数据"
 - **已知技术债（PR #5 审查）** — ① `saveResults` 方法 DB 写入失败未抛异常 ② ~~`QuestionTemplatesService`~~ / `DailySummaryController` 缺 UUID 校验 ③ API 响应未统一 `{data, message}` 格式 ④ 前端 `onError` 回调未通知用户。新增代码应避免重复这些模式
+- **产品驱动设计原则** — 所有面向用户的页面遵循：问题优先呈现 → 自带关键证据（顾客原话）→ 可听原声 → 有行动出口。不做被动数据报表，系统替用户判断什么需要关注。好评差评分区展示不混排
 
 ## 技术债追踪
 
@@ -188,9 +189,7 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
-| PR #6: 看板播放 + 录音页优化 | feat/meeting-recording | PR 已创建，待 Jeremy merge | PR: https://github.com/JeremyDong22/lingtinofsmartice/pull/6 。含 5 个 commit：motivation banner、dashboard audio playback、recorder visual Phase 2、sw.js rebuild、问卷收束提示修复。已 rebase 到 Jeremy 的 3 个 main 提交（DeepSeek 切换、讯飞 partial fix、CLAUDE.md 技术债）之上 |
-| 看板录音播放 | feat/meeting-recording | 代码完成，待后端部署 | 前端播放逻辑已完整（dashboard/page.tsx:527-538），后端 sentiment-summary 已返回 `audio_url`。**本地测试无法验证**：前端连线上 API（.env.local NEXT_PUBLIC_API_URL），线上 main 分支还没有此改动。merge PR 后 Zeabur 自动部署即可测试 |
-| MotivationBanner 统计 | feat/meeting-recording | 代码完成，待后端部署 | 同上原因：`motivation-stats` API 端点是 feature branch 新增，线上返回 404。merge 后生效 |
-| 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 签发于 2025-01-23，早于项目创建日期 2025-03-26，Supabase 返回 "Invalid API key"。线上 Zeabur 有正确 key 所以生产正常。修复方法：从 Supabase Dashboard (Settings > API Keys > Legacy > service_role) 获取正确 key 替换 .env |
-| 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API（NEXT_PUBLIC_API_URL=线上地址），本地后端虽启动但未被前端使用。本地后端因 service key 无效运行在 MOCK MODE。要完整本地测试需修复 .env key 并改 .env.local 指向 localhost:3001 |
-| 厨师长角色 + 移除隐身模式 | feat/meeting-recording | 代码完成，待用户验证 | 隐身模式已移除。新增 `head_chef` 角色：3 页面（/chef/dashboard、/chef/dishes、/chef/meetings）+ ChefBottomNav + 路由跳转。共享常量提取到 `lib/action-item-constants.ts` + `lib/date-utils.ts`。版本更新到 1.1.0。测试账号 `cheftest`（密码 chef123）已通过 MCP 在线上 Supabase 创建。`pnpm build:web` 通过 |
+| PR #7: 厨师长角色 + CHANGELOG + 综合产品指南 | feat/meeting-recording | PR 已创建，待 Jeremy merge | PR: https://github.com/JeremyDong22/lingtinofsmartice/pull/7 |
+| 全角色产品体验升级 v1.3.0 | feat/meeting-recording | ✅ 代码完成，待用户验证 | 管理层简报页 + 店长看板改造（全维度反馈/话术分优劣/情绪趋势）+ 厨师长扩展（厨房反馈/待办优先级）+ AI 智库个性化。build 通过。REQ-001~003 |
+| 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 无效。线上 Zeabur 有正确 key 所以生产正常 |
+| 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API，本地后端因 service key 无效运行在 MOCK MODE |

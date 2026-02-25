@@ -1,19 +1,18 @@
 // Chat Page - AI-powered analytics assistant with streaming support
+// v2.4 - Dynamic personalized quick questions based on today's data
 // v2.3 - Fixed: Wrap useSearchParams in Suspense boundary for Next.js 14 static build
-// v2.2 - Added: Gray italic style for stopped messages
-// v2.1 - Fixed: Remove query param from URL after processing to prevent re-send on refresh
-// v2.0 - Fixed: Wait for hook initialization before processing URL query parameter
-// v1.9 - Added: Support for pre-filled question via URL query parameter (?q=...)
-// v1.8 - Added retry button for failed messages
 
 'use client';
 
-import { useState, useRef, useEffect, Suspense } from 'react';
+import { useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import useSWR from 'swr';
+import { useAuth } from '@/contexts/AuthContext';
 import { useChatStream } from '@/hooks/useChatStream';
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator';
 import { UserMenu } from '@/components/layout/UserMenu';
+import { getDateForSelection } from '@/lib/date-utils';
 
 // Wrapper component to handle Suspense boundary for useSearchParams
 export default function ChatPage() {
@@ -38,6 +37,48 @@ function ChatLoadingFallback() {
   );
 }
 
+// Generate personalized quick questions based on today's data
+function usePersonalizedQuestions(): string[] {
+  const { user } = useAuth();
+  const restaurantId = user?.restaurantId;
+  const date = getDateForSelection('今日');
+  const params = restaurantId
+    ? new URLSearchParams({ restaurant_id: restaurantId, date }).toString()
+    : null;
+
+  const { data: sentimentData } = useSWR<{
+    negative_feedbacks?: { text: string; count: number }[];
+    positive_percent?: number;
+    negative_percent?: number;
+  }>(params ? `/api/dashboard/sentiment-summary?${params}` : null);
+
+  const { data: coverageData } = useSWR<{
+    periods?: { coverage: number; period: string }[];
+  }>(params ? `/api/dashboard/coverage?${params}` : null);
+
+  return useMemo(() => {
+    const questions: string[] = [];
+
+    // Coverage-based question
+    const lowCoverage = coverageData?.periods?.find(p => p.coverage < 80);
+    if (lowCoverage) {
+      questions.push(`今天${lowCoverage.period === 'lunch' ? '午市' : '晚市'}覆盖率为什么下降了？`);
+    }
+
+    // Negative feedback-based question
+    const topNeg = sentimentData?.negative_feedbacks?.[0];
+    if (topNeg && topNeg.count >= 2) {
+      questions.push(`"${topNeg.text}"被多桌提到，有什么改进建议？`);
+    }
+
+    // Always include these as fallbacks
+    questions.push('帮我优化桌访话术');
+    questions.push('最近有哪些需要改进的地方');
+
+    return questions.slice(0, 4);
+  }, [sentimentData, coverageData]);
+}
+
 function ChatContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -45,12 +86,7 @@ function ChatContent() {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const quickQuestions = [
-    '这周桌访覆盖率怎么样',
-    '顾客对菜品有什么反馈',
-    '最近有哪些需要改进的地方',
-    '店长都在问什么问题',
-  ];
+  const quickQuestions = usePersonalizedQuestions();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -164,19 +200,37 @@ function ChatContent() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Questions */}
-      <div className="px-4 py-2 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide">
-        {quickQuestions.map((q) => (
-          <button
-            key={q}
-            onClick={() => handleQuickQuestion(q)}
-            disabled={isLoading}
-            className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 whitespace-nowrap hover:border-primary-500 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {q}
-          </button>
-        ))}
-      </div>
+      {/* Quick Questions - show as centered cards when empty, inline chips otherwise */}
+      {messages.length === 0 ? (
+        <div className="px-4 py-6 flex-shrink-0">
+          <p className="text-center text-sm text-gray-400 mb-3">💡 今天可以问我</p>
+          <div className="space-y-2 max-w-sm mx-auto">
+            {quickQuestions.map((q) => (
+              <button
+                key={q}
+                onClick={() => handleQuickQuestion(q)}
+                disabled={isLoading}
+                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 text-left hover:border-primary-500 hover:bg-primary-50 disabled:opacity-50 transition-colors"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 py-2 flex gap-2 overflow-x-auto flex-shrink-0 scrollbar-hide">
+          {quickQuestions.map((q) => (
+            <button
+              key={q}
+              onClick={() => handleQuickQuestion(q)}
+              disabled={isLoading}
+              className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 whitespace-nowrap hover:border-primary-500 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="p-4 bg-white border-t flex-shrink-0">

@@ -18,6 +18,7 @@ import { MeetingTypeSelector } from '@/components/recorder/MeetingTypeSelector';
 import { MeetingAgendaCard } from '@/components/recorder/MeetingAgendaCard';
 import { PreMealReminder } from '@/components/recorder/PreMealReminder';
 import { MeetingHistory } from '@/components/recorder/MeetingHistory';
+import { StealthOverlay } from '@/components/recorder/StealthOverlay';
 import { MeetingDetail } from '@/components/recorder/MeetingDetail';
 import { MotivationBanner } from '@/components/recorder/MotivationBanner';
 import { UserMenu } from '@/components/layout/UserMenu';
@@ -64,6 +65,7 @@ export default function RecorderPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [pendingSave, setPendingSave] = useState(false);
   const [selectedDate, setSelectedDate] = useState('今日');
+  const [stealthMode, setStealthMode] = useState(false);
 
   // Visit mode state
   const [tableId, setTableId] = useState('');
@@ -207,6 +209,7 @@ export default function RecorderPage() {
       return;
     }
     await startRecording();
+    setStealthMode(true);
   }, [tableId, startRecording, showToast]);
 
   const handleVisitStop = useCallback(async () => {
@@ -342,6 +345,9 @@ export default function RecorderPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Stealth Mode Overlay - fake WeChat interface */}
+      <StealthOverlay visible={stealthMode} onDismiss={() => setStealthMode(false)} />
+
       {/* Meeting Detail Bottom Sheet */}
       <MeetingDetail meeting={detailMeeting} onClose={() => setDetailMeeting(null)} />
 
@@ -446,14 +452,26 @@ export default function RecorderPage() {
                 disabled={isRecording}
               />
 
-              {/* 2. Record Button */}
-              <div className="flex justify-center py-1">
+              {/* 2. Record Button with Stealth Mode Toggle */}
+              <div className="flex justify-center items-center gap-4 py-1">
                 <RecordButton
                   isRecording={isRecording}
                   disabled={false}
                   onStart={handleStart}
                   onStop={handleStop}
                 />
+                {/* Stealth mode button - only show when recording */}
+                {isRecording && (
+                  <button
+                    onClick={() => setStealthMode(true)}
+                    className="w-12 h-12 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg hover:bg-green-600 transition-colors"
+                    title="隐蔽模式"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </div>
 
