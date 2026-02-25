@@ -125,8 +125,15 @@ export default function AdminBriefingPage() {
     [playingKey, stopAudio],
   );
 
-  // Fetch briefing data
-  const { data, isLoading } = useSWR<BriefingResponse>('/api/dashboard/briefing');
+  // Compute yesterday's date (briefing shows prior-day operations)
+  const yesterday = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  // Fetch briefing data (yesterday's date — morning review of prior day)
+  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?date=${yesterday}`);
   // Fetch overview data (keywords + store grid)
   const { data: overviewData } = useSWR<OverviewResponse>('/api/dashboard/restaurants-overview');
 

@@ -133,6 +133,8 @@ export default function ChefDishesPage() {
   const [selectedDate, setSelectedDate] = useState('今日');
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
   const [expandedKitchen, setExpandedKitchen] = useState<string | null>(null);
+  // Local-only "marked improved" state (resets on refresh; backend integration TBD)
+  const [markedImproved, setMarkedImproved] = useState<Set<string>>(new Set());
 
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -328,31 +330,41 @@ export default function ChefDishesPage() {
 
                         {/* Expanded: show contexts with Q&A */}
                         {isExpanded && (
-                          <div className="bg-gray-50 px-4 pb-4 pt-3 space-y-3">
-                            {kp.feedbacks.map(fb => (
-                              fb.contexts || []).map((ctx, i) => (
-                                <div key={`${ctx.visitId}-${i}`} className="bg-white rounded-xl p-3 border border-gray-100">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                                      {ctx.tableId}桌
-                                    </span>
-                                    {ctx.audioUrl && (
-                                      <AudioCircleButton
-                                        isPlaying={playingVisitId === ctx.visitId}
-                                        onClick={(e) => { e.stopPropagation(); handleAudioToggle(ctx.visitId, ctx.audioUrl!); }}
-                                      />
-                                    )}
-                                  </div>
-                                  <div className="border-l-2 border-primary-200 pl-3">
-                                    <QAConversation questions={ctx.managerQuestions} answers={ctx.customerAnswers} />
-                                  </div>
+                          <div className="border-t border-amber-100/60 bg-stone-50/50 px-4 pb-4 pt-3 space-y-3">
+                            {kp.feedbacks.flatMap(fb => fb.contexts ?? []).map((ctx, i) => (
+                              <div key={`${ctx.visitId}-${i}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-sm font-medium text-gray-700">{ctx.tableId}桌</span>
+                                  {ctx.audioUrl && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleAudioToggle(ctx.visitId, ctx.audioUrl!); }}
+                                      className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                                        playingVisitId === ctx.visitId ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600'
+                                      }`}
+                                    >
+                                      {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 原声'}
+                                    </button>
+                                  )}
                                 </div>
-                              ))
-                            )}
+                                {ctx.customerAnswers.length > 0 && (
+                                  <div className="text-[13px] text-gray-700 bg-white rounded-lg px-3 py-2 border border-gray-100">
+                                    <span className="text-gray-400 font-medium">顾客：</span>{ctx.customerAnswers.join(' ')}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
                             {/* Action buttons */}
-                            <div className="flex items-center gap-2 pt-2">
-                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-xl hover:bg-green-100 transition-colors">
-                                已改善
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                              <button
+                                onClick={() => setMarkedImproved(prev => new Set(prev).add(kp.label))}
+                                disabled={markedImproved.has(kp.label)}
+                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                  markedImproved.has(kp.label)
+                                    ? 'text-gray-400 bg-gray-50 cursor-default'
+                                    : 'text-green-700 bg-green-50 hover:bg-green-100'
+                                }`}
+                              >
+                                {markedImproved.has(kp.label) ? '✅ 已标记' : '✅ 已改善'}
                               </button>
                               <button
                                 onClick={() => router.push('/chef/dashboard')}
@@ -481,9 +493,17 @@ export default function ChefDishesPage() {
                               </div>
                             ))}
                             {/* Action buttons */}
-                            <div className="flex items-center gap-2 pt-2">
-                              <button className="flex-1 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-xl hover:bg-green-100 transition-colors">
-                                已改善
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                              <button
+                                onClick={() => setMarkedImproved(prev => new Set(prev).add(dish.dish_name))}
+                                disabled={markedImproved.has(dish.dish_name)}
+                                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                  markedImproved.has(dish.dish_name)
+                                    ? 'text-gray-400 bg-gray-50 cursor-default'
+                                    : 'text-green-700 bg-green-50 hover:bg-green-100'
+                                }`}
+                              >
+                                {markedImproved.has(dish.dish_name) ? '✅ 已标记' : '✅ 已改善'}
                               </button>
                               <button
                                 onClick={() => router.push('/chef/dashboard')}

@@ -56,17 +56,6 @@ interface ManagerQuestion {
   time: string;
 }
 
-interface DishRanking {
-  dish_name: string;
-  mention_count: number;
-  positive: number;
-  negative: number;
-  neutral: number;
-}
-
-interface DishRankingResponse {
-  dishes: DishRanking[];
-}
 
 interface SuggestionItem {
   text: string;
@@ -243,9 +232,6 @@ export default function DashboardPage() {
   const { data: highlightsData, isLoading: highlightsLoading } = useSWR<HighlightsResponse>(
     params ? `/api/dashboard/speech-highlights?${params}` : null
   );
-  const { data: dishData, isLoading: dishLoading } = useSWR<DishRankingResponse>(
-    params ? `/api/dashboard/dish-ranking?${params}` : null
-  );
   const { data: suggestionsData } = useSWR<SuggestionsResponse>(
     restaurantId ? `/api/dashboard/suggestions?restaurant_id=${restaurantId}&days=7` : null
   );
@@ -254,9 +240,8 @@ export default function DashboardPage() {
   const coverage = coverageData ?? { periods: [] };
   const sentiment = sentimentData ?? null;
   const managerQuestions = highlightsData?.questions ?? [];
-  const dishes = dishData?.dishes ?? [];
   const suggestions = suggestionsData?.suggestions ?? [];
-  const loading = coverageLoading || sentimentLoading || highlightsLoading || dishLoading;
+  const loading = coverageLoading || sentimentLoading || highlightsLoading;
 
   // Close popover when clicking outside
   useEffect(() => {
