@@ -10,8 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { MeetingDetail } from '@/components/recorder/MeetingDetail';
 import type { MeetingRecord, MeetingType, MeetingStatus } from '@/hooks/useMeetingStore';
-// DEV-ONLY: mock data fallback (file is .gitignored, never committed)
-import { MOCK_ADMIN_OVERVIEW } from '@/lib/dev-mock-data';
 
 // --- Types ---
 interface ApiMeeting {
@@ -204,8 +202,7 @@ export default function AdminMeetingsPage() {
   const { data: apiData, isLoading, error } = useSWR<AdminOverviewResponse>(
     `/api/meeting/admin-overview?date=${date}${user?.id ? `&employee_id=${user.id}` : ''}`
   );
-  // DEV-ONLY: fallback to mock data when API not yet deployed
-  const data = (apiData || (error ? MOCK_ADMIN_OVERVIEW as unknown as AdminOverviewResponse : undefined));
+  const data = apiData;
   const hasData = !!data;
 
   const storesWithMeetings = useMemo(
