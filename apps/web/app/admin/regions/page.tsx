@@ -265,12 +265,10 @@ export default function RegionManagePage() {
           <div className="text-center py-8 text-gray-500">加载中...</div>
         )}
 
-        {/* Create/Edit form (inline, at top) */}
-        {(isNew || editingId) && (
+        {/* Create form (top, only for new) */}
+        {isNew && (
           <div className="bg-white rounded-2xl p-4 shadow-sm border-2 border-primary-200">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">
-              {isNew ? '新建区域' : '编辑区域'}
-            </h3>
+            <h3 className="text-sm font-medium text-gray-900 mb-3">新建区域</h3>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -323,9 +321,39 @@ export default function RegionManagePage() {
             (m) => m.managed_region_ids?.includes(r.id)
           );
 
+          const isEditingThis = editingId === r.id;
+
           return (
             <div key={r.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              {/* Card header */}
+              {/* Inline edit form (replaces card header) */}
+              {isEditingThis ? (
+                <div className="px-4 py-3 border-b-2 border-primary-200">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      autoFocus
+                      onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                    />
+                    <button
+                      onClick={closeForm}
+                      className="px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !formName.trim()}
+                      className="px-3 py-2 text-sm text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      {saving ? '保存中...' : '保存'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+              /* Card header */
               <button
                 onClick={() => toggleExpand(r.id)}
                 className="w-full px-4 py-3 flex items-center justify-between text-left"
@@ -364,6 +392,7 @@ export default function RegionManagePage() {
                   </svg>
                 </div>
               </button>
+              )}
 
               {/* Expanded content */}
               {isExpanded && (
