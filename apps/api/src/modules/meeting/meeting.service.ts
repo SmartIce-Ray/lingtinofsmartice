@@ -2,7 +2,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
-import { getChinaDateString, getChinaHour } from '../../common/utils/date';
+import { getChinaDateString, getChinaHour, resolveRange, getYesterdayChinaDateString } from '../../common/utils/date';
 import { randomUUID } from 'crypto';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -81,14 +81,10 @@ export class MeetingService {
     };
   }
 
-  async getAdminOverview(date?: string, employeeId?: string, managedIds?: string[] | null) {
+  async getAdminOverview(date?: string, startDate?: string, endDate?: string, employeeId?: string, managedIds?: string[] | null) {
     const client = this.supabase.getClient();
-    // Default to yesterday
-    const targetDate = date || (() => {
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      return d.toISOString().split('T')[0];
-    })();
+    // Resolve date range (backward-compatible with ?date= param)
+    const range = resolveRange(date, startDate, endDate, getYesterdayChinaDateString);
 
     // 1. Get visible restaurants (scoped or all)
     let restQuery = client
@@ -105,12 +101,13 @@ export class MeetingService {
       throw restErr;
     }
 
-    // 2. Get meetings for the target date (scoped to visible restaurants)
+    // 2. Get meetings for the date range (scoped to visible restaurants)
     const restIds = (restaurants || []).map(r => r.id);
     let meetQuery = client
       .from('lingtin_meeting_records')
       .select('id, restaurant_id, employee_id, meeting_type, status, ai_summary, action_items, key_decisions, audio_url, duration_seconds, created_at')
-      .eq('meeting_date', targetDate)
+      .gte('meeting_date', range.start)
+      .lte('meeting_date', range.end)
       .order('created_at', { ascending: false });
     if (managedIds && managedIds.length > 0) {
       meetQuery = meetQuery.in('restaurant_id', restIds);
@@ -167,7 +164,9 @@ export class MeetingService {
           audio_url: m.audio_url,
           created_at: m.created_at,
         })),
-        last_meeting_date: storeMeetings.length > 0 ? targetDate : (lastMeetingDates.get(r.id) || null),
+        last_meeting_date: storeMeetings.length > 0
+          ? (storeMeetings[0].created_at?.split('T')[0] || range.end)
+          : (lastMeetingDates.get(r.id) || null),
       };
     });
 
@@ -191,7 +190,7 @@ export class MeetingService {
     const storesWithMeetings = stores.filter(s => s.meetings.length > 0).length;
 
     return {
-      date: targetDate,
+      date: range.start,
       summary: {
         total_meetings: allMeetings.length,
         stores_with_meetings: storesWithMeetings,

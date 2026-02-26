@@ -119,12 +119,14 @@ export class MeetingController {
   @Get('admin-overview')
   async getAdminOverview(
     @Query('date') date?: string,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
     @Query('employee_id') employeeId?: string,
     @Query('managed_ids') managedIdsStr?: string,
   ) {
-    this.logger.log(`▶ GET /meeting/admin-overview?date=${date || 'yesterday'}&employee_id=${employeeId || 'none'}&managed_ids=${managedIdsStr || 'all'}`);
+    this.logger.log(`▶ GET /meeting/admin-overview?date=${date || 'yesterday'}&start_date=${startDate}&end_date=${endDate}&employee_id=${employeeId || 'none'}&managed_ids=${managedIdsStr || 'all'}`);
     const managedIds = managedIdsStr ? this.parseManagedIds(managedIdsStr) : null;
-    const result = await this.meetingService.getAdminOverview(date, employeeId, managedIds);
+    const result = await this.meetingService.getAdminOverview(date, startDate, endDate, employeeId, managedIds);
     this.logger.log(`◀ Admin overview: ${result.stores.length} stores, ${result.summary.total_meetings} meetings`);
     return result;
   }

@@ -90,7 +90,7 @@ export class DashboardService {
 
   // Get coverage statistics (visits vs table sessions)
   // Supports restaurant_id=all for multi-store summary
-  async getCoverageStats(restaurantId: string, date: string, managedIds: string[] | null = null) {
+  async getCoverageStats(restaurantId: string, startDate: string, endDate: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         periods: [
@@ -104,7 +104,7 @@ export class DashboardService {
 
     // Multi-restaurant mode: return per-restaurant breakdown with summary
     if (restaurantId === 'all') {
-      return this.getMultiRestaurantCoverage(date, managedIds);
+      return this.getMultiRestaurantCoverage(startDate, endDate, managedIds);
     }
 
     // Single restaurant mode (original logic)
@@ -113,7 +113,8 @@ export class DashboardService {
       .from('lingtin_table_sessions')
       .select('period')
       .eq('restaurant_id', restaurantId)
-      .eq('session_date', date);
+      .gte('session_date', startDate)
+      .lte('session_date', endDate);
 
     if (sessionsError) throw sessionsError;
 
@@ -122,7 +123,8 @@ export class DashboardService {
       .from('lingtin_visit_records')
       .select('visit_period')
       .eq('restaurant_id', restaurantId)
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed');
 
     if (visitsError) throw visitsError;
@@ -148,25 +150,27 @@ export class DashboardService {
   }
 
   // Get coverage stats for all restaurants (admin multi-store view)
-  private async getMultiRestaurantCoverage(date: string, managedIds: string[] | null = null) {
+  private async getMultiRestaurantCoverage(startDate: string, endDate: string, managedIds: string[] | null = null) {
     const client = this.supabase.getClient();
 
     // Get visible restaurants (scoped or all)
     const restaurants = await this.getVisibleRestaurants(managedIds);
 
-    // Get all sessions for the date
+    // Get all sessions for the date range
     const { data: allSessions, error: sessionsError } = await client
       .from('lingtin_table_sessions')
       .select('restaurant_id, period')
-      .eq('session_date', date);
+      .gte('session_date', startDate)
+      .lte('session_date', endDate);
 
     if (sessionsError) throw sessionsError;
 
-    // Get all visits for the date
+    // Get all visits for the date range
     const { data: allVisits, error: visitsError } = await client
       .from('lingtin_visit_records')
       .select('restaurant_id, visit_period')
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed');
 
     if (visitsError) throw visitsError;
@@ -222,7 +226,7 @@ export class DashboardService {
 
   // Get top feedback items with sentiment (from feedbacks JSONB, not dish_mentions table)
   // Note: lingtin_dish_mentions table is deprecated — AI pipeline only writes to feedbacks JSONB
-  async getDishRanking(restaurantId: string, date: string, limit: number) {
+  async getDishRanking(restaurantId: string, startDate: string, endDate: string, limit: number) {
     if (this.supabase.isMockMode()) {
       return {
         dishes: [
@@ -241,7 +245,8 @@ export class DashboardService {
       .from('lingtin_visit_records')
       .select('id, table_id, feedbacks, manager_questions, customer_answers, audio_url')
       .eq('restaurant_id', restaurantId)
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed');
 
     if (error) throw error;
@@ -349,10 +354,11 @@ export class DashboardService {
     return { trend };
   }
 
-  // Get sentiment distribution summary for a date with feedback phrases
+  // Get sentiment distribution summary for a date range with feedback phrases
   // v1.7 - Added: Include conversation context for each feedback (for popover display)
   // v1.9 - Added: Support restaurant_id=all for multi-store aggregation
-  async getSentimentSummary(restaurantId: string, date: string, managedIds: string[] | null = null) {
+  // v1.10 - Added: Date range support (startDate/endDate)
+  async getSentimentSummary(restaurantId: string, startDate: string, endDate: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         positive_count: 12, neutral_count: 5, negative_count: 3,
@@ -410,7 +416,8 @@ export class DashboardService {
     let query = client
       .from('lingtin_visit_records')
       .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript, audio_url, restaurant_id')
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed');
 
     // Filter by restaurant scope
@@ -540,7 +547,7 @@ export class DashboardService {
 
   // Get all restaurants overview with sentiment scores and keywords (for admin dashboard)
   // Returns: restaurant list with visit count, avg sentiment, coverage, recent keywords
-  async getRestaurantsOverview(date: string, managedIds: string[] | null = null) {
+  async getRestaurantsOverview(startDate: string, endDate: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         summary: { total_visits: 28, avg_sentiment: 0.72, restaurant_count: 3 },
@@ -558,11 +565,12 @@ export class DashboardService {
     const restaurants = await this.getVisibleRestaurants(managedIds);
     const restIds = restaurants.map(r => r.id);
 
-    // Get visits for the date with sentiment and keywords (scoped)
+    // Get visits for the date range with sentiment and keywords (scoped)
     let visitsQuery = client
       .from('lingtin_visit_records')
       .select('restaurant_id, visit_period, sentiment_score, keywords')
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed');
     if (managedIds) visitsQuery = visitsQuery.in('restaurant_id', restIds);
     const { data: allVisits, error: visitsError } = await visitsQuery;
@@ -572,7 +580,8 @@ export class DashboardService {
     let sessionsQuery = client
       .from('lingtin_table_sessions')
       .select('restaurant_id, period')
-      .eq('session_date', date);
+      .gte('session_date', startDate)
+      .lte('session_date', endDate);
     if (managedIds) sessionsQuery = sessionsQuery.in('restaurant_id', restIds);
     const { data: allSessions, error: sessionsError } = await sessionsQuery;
     if (sessionsError) throw sessionsError;
@@ -650,8 +659,8 @@ export class DashboardService {
     };
   }
 
-  // Get manager questions used today (simple list)
-  async getSpeechHighlights(restaurantId: string, date: string) {
+  // Get manager questions used in date range (simple list)
+  async getSpeechHighlights(restaurantId: string, startDate: string, endDate: string) {
     if (this.supabase.isMockMode()) {
       return {
         questions: [
@@ -668,7 +677,8 @@ export class DashboardService {
       .from('lingtin_visit_records')
       .select('table_id, manager_questions, created_at')
       .eq('restaurant_id', restaurantId)
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed')
       .not('manager_questions', 'is', null)
       .order('created_at', { ascending: false })
@@ -747,10 +757,10 @@ export class DashboardService {
   }
 
   // Get daily briefing for admin: cross-restaurant anomaly detection + problem cards
-  async getBriefing(date: string, managedIds: string[] | null = null) {
+  async getBriefing(startDate: string, endDate: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
-        date,
+        date: startDate,
         greeting: this.getGreeting(),
         problems: [
           {
@@ -798,13 +808,14 @@ export class DashboardService {
     // 1. Get visible restaurants (scoped or all)
     const restaurants = await this.getVisibleRestaurants(managedIds);
     if (restaurants.length === 0) {
-      return { date, greeting: this.getGreeting(), problems: [], healthy_count: 0, restaurant_count: 0, avg_sentiment: null, avg_coverage: 0 };
+      return { date: startDate, greeting: this.getGreeting(), problems: [], healthy_count: 0, restaurant_count: 0, avg_sentiment: null, avg_coverage: 0 };
     }
 
     const restMap = new Map(restaurants.map(r => [r.id, r.restaurant_name]));
     const restIds = restaurants.map(r => r.id);
 
     // 2. Fetch visit records, action items, table sessions, and yesterday's data in parallel
+    const isMultiDay = startDate !== endDate;
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = toChinaDateString(yesterday);
@@ -812,7 +823,8 @@ export class DashboardService {
     // Build scoped queries
     let visitsQ = client.from('lingtin_visit_records')
       .select('id, restaurant_id, table_id, feedbacks, sentiment_score, audio_url, keywords, status, manager_questions, customer_answers')
-      .eq('visit_date', date)
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate)
       .eq('status', 'processed');
     let actionsQ = client.from('lingtin_action_items')
       .select('id, restaurant_id, category, suggestion_text, priority, status, created_at')
@@ -820,10 +832,12 @@ export class DashboardService {
       .eq('priority', 'high');
     let sessionsQ = client.from('lingtin_table_sessions')
       .select('restaurant_id, period')
-      .eq('session_date', date);
+      .gte('session_date', startDate)
+      .lte('session_date', endDate);
+    // Skip yesterday comparison for multi-day ranges (meaningless)
     let yesterdayQ = client.from('lingtin_visit_records')
       .select('restaurant_id, sentiment_score')
-      .eq('visit_date', yesterdayStr)
+      .eq('visit_date', isMultiDay ? '1970-01-01' : yesterdayStr)
       .eq('status', 'processed');
 
     if (managedIds) {
@@ -840,7 +854,7 @@ export class DashboardService {
     const visits = visitsRes.data || [];
     const actions = actionsRes.data || [];
     const sessions = sessionsRes.data || [];
-    const yesterdayVisits = yesterdayVisitsRes.data || [];
+    const yesterdayVisits = isMultiDay ? [] : (yesterdayVisitsRes.data || []);
 
     // 3. Per-restaurant anomaly detection
     const problems: BriefingProblem[] = [];
@@ -996,7 +1010,7 @@ export class DashboardService {
     const overallCoverage = totalOpen > 0 ? Math.round((totalVisit / totalOpen) * 100) : 0;
 
     return {
-      date,
+      date: startDate,
       greeting: this.getGreeting(),
       problems,
       healthy_count: healthyCount,

@@ -10,7 +10,9 @@ import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { ActionItemsCard } from '@/components/dashboard/ActionItemsCard';
-import { getDateForSelection } from '@/lib/date-utils';
+import { getChinaToday, singleDay, dateRangeParams, isMultiDay } from '@/lib/date-utils';
+import type { DateRange } from '@/lib/date-utils';
+import { DatePicker, storePresets } from '@/components/shared/DatePicker';
 
 // Types for API responses
 interface CoveragePeriod {
@@ -156,7 +158,7 @@ function SpeechQualitySplit({ questions }: { questions: ManagerQuestion[] }) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [selectedDate, setSelectedDate] = useState('今日');
+  const [dateRange, setDateRange] = useState<DateRange>(() => singleDay(getChinaToday()));
   // State for feedback popover
   const [selectedFeedback, setSelectedFeedback] = useState<{
     feedback: SentimentFeedback;
@@ -204,19 +206,22 @@ export default function DashboardPage() {
   const restaurantId = user?.restaurantId;
 
   // Build query params for API calls
-  const date = getDateForSelection(selectedDate);
+  const rangeQs = dateRangeParams(dateRange);
   const params = restaurantId
-    ? new URLSearchParams({ restaurant_id: restaurantId, date }).toString()
+    ? `restaurant_id=${restaurantId}&${rangeQs}`
     : null;
 
-  // Build yesterday's params for trend comparison
+  // Whether this is a multi-day range (hides trend arrows)
+  const multiDay = isMultiDay(dateRange);
+
+  // Build yesterday's params for trend comparison (only when single day)
   const yesterdayDate = (() => {
-    const d = new Date(date);
+    const d = new Date(dateRange.startDate);
     d.setDate(d.getDate() - 1);
     return d.toISOString().split('T')[0];
   })();
-  const yesterdayParams = restaurantId
-    ? new URLSearchParams({ restaurant_id: restaurantId, date: yesterdayDate }).toString()
+  const yesterdayParams = restaurantId && !multiDay
+    ? `restaurant_id=${restaurantId}&start_date=${yesterdayDate}&end_date=${yesterdayDate}`
     : null;
 
   // SWR hooks for data fetching with stale-while-revalidate
@@ -260,23 +265,13 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">数据看板</h1>
-        <div className="flex items-center gap-3">
-          {/* Date Tabs */}
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            {['今日', '昨日'].map((option) => (
-              <button
-                key={option}
-                onClick={() => setSelectedDate(option)}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                  selectedDate === option
-                    ? 'bg-white text-gray-900 shadow-sm font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-2">
+          <DatePicker
+            value={dateRange}
+            onChange={setDateRange}
+            maxDate={getChinaToday()}
+            presets={storePresets}
+          />
           <UserMenu />
         </div>
       </header>
@@ -357,7 +352,7 @@ export default function DashboardPage() {
                 { label: '中性😐', pct: sentiment.neutral_percent, prevPct: yesterdaySentiment?.neutral_percent, color: 'text-gray-600', trendUp: 'text-gray-500', trendDown: 'text-gray-500' },
                 { label: '负面😟', pct: sentiment.negative_percent, prevPct: yesterdaySentiment?.negative_percent, color: 'text-red-500', trendUp: 'text-red-500', trendDown: 'text-green-500' },
               ].map((item, i) => {
-                const diff = item.prevPct != null ? item.pct - item.prevPct : null;
+                const diff = !multiDay && item.prevPct != null ? item.pct - item.prevPct : null;
                 return (
                   <div key={i} className="text-center flex-1">
                     <div className={`text-3xl font-bold ${item.color}`}>{item.pct}%</div>
@@ -518,7 +513,7 @@ export default function DashboardPage() {
 
         {/* AI Action Items */}
         {restaurantId && (
-          <ActionItemsCard restaurantId={restaurantId} date={date} />
+          <ActionItemsCard restaurantId={restaurantId} date={dateRange.endDate} />
         )}
       </main>
 

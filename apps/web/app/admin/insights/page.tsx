@@ -10,7 +10,9 @@ import { useManagedScope } from '@/hooks/useManagedScope';
 import { CustomerInsights } from '@/components/admin/CustomerInsights';
 import { ProductInsights } from '@/components/admin/ProductInsights';
 import { FeedbackManagement } from '@/components/admin/FeedbackManagement';
-import { getChinaYesterday, shiftDate, formatDateDisplay } from '@/lib/date-utils';
+import { getChinaYesterday, singleDay, dateRangeParams } from '@/lib/date-utils';
+import type { DateRange } from '@/lib/date-utils';
+import { DatePicker, adminPresets } from '@/components/shared/DatePicker';
 
 type InsightTab = 'customer' | 'product' | 'feedback';
 
@@ -19,9 +21,7 @@ export default function InsightsPage() {
   const { managedIdsParam } = useManagedScope();
   const isSuperAdmin = user?.isSuperAdmin === true;
   const [activeTab, setActiveTab] = useState<InsightTab>('customer');
-  const [selectedDate, setSelectedDate] = useState(getChinaYesterday);
-  const maxDate = getChinaYesterday();
-  const canGoForward = selectedDate < maxDate;
+  const [dateRange, setDateRange] = useState<DateRange>(() => singleDay(getChinaYesterday()));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -29,26 +29,13 @@ export default function InsightsPage() {
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">洞察</h1>
         <div className="flex items-center gap-2">
-          {/* Date navigation (only for customer/product tabs) */}
           {activeTab !== 'feedback' && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
-                className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 active:bg-gray-200"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              <span className="text-sm text-gray-500 font-medium px-1">{formatDateDisplay(selectedDate)}</span>
-              <button
-                onClick={() => canGoForward && setSelectedDate(shiftDate(selectedDate, 1))}
-                disabled={!canGoForward}
-                className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
-                  canGoForward ? 'text-gray-400 hover:bg-gray-100 active:bg-gray-200' : 'text-gray-200'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-              </button>
-            </div>
+            <DatePicker
+              value={dateRange}
+              onChange={setDateRange}
+              maxDate={getChinaYesterday()}
+              presets={adminPresets}
+            />
           )}
           <UserMenu />
         </div>
@@ -94,7 +81,7 @@ export default function InsightsPage() {
 
       {/* Content */}
       <div className="px-4 py-3">
-        {activeTab === 'customer' && <CustomerInsights date={selectedDate} managedIdsParam={managedIdsParam} />}
+        {activeTab === 'customer' && <CustomerInsights startDate={dateRange.startDate} endDate={dateRange.endDate} managedIdsParam={managedIdsParam} />}
         {activeTab === 'product' && <ProductInsights />}
         {activeTab === 'feedback' && <FeedbackManagement />}
       </div>

@@ -11,7 +11,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useManagedScope } from '@/hooks/useManagedScope';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { BenchmarkPanel } from '@/components/admin/BenchmarkPanel';
-import { getChinaYesterday, shiftDate, formatDateDisplay } from '@/lib/date-utils';
+import { getChinaYesterday, singleDay, dateRangeParams } from '@/lib/date-utils';
+import type { DateRange } from '@/lib/date-utils';
+import { DatePicker, adminPresets } from '@/components/shared/DatePicker';
 
 // --- Types ---
 interface BriefingEvidence {
@@ -102,9 +104,7 @@ export default function AdminBriefingPage() {
   const router = useRouter();
 
   // Date navigation
-  const [selectedDate, setSelectedDate] = useState(getChinaYesterday);
-  const maxDate = getChinaYesterday();
-  const canGoForward = selectedDate < maxDate;
+  const [dateRange, setDateRange] = useState<DateRange>(() => singleDay(getChinaYesterday()));
 
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -136,9 +136,9 @@ export default function AdminBriefingPage() {
   );
 
   // Fetch briefing data (scoped by managed restaurants)
-  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?date=${selectedDate}${managedIdsParam}`);
+  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?${dateRangeParams(dateRange)}${managedIdsParam}`);
   // Fetch overview data (keywords + store grid)
-  const { data: overviewData } = useSWR<OverviewResponse>(`/api/dashboard/restaurants-overview?date=${selectedDate}${managedIdsParam}`);
+  const { data: overviewData } = useSWR<OverviewResponse>(`/api/dashboard/restaurants-overview?${dateRangeParams(dateRange)}${managedIdsParam}`);
 
   const userName = user?.employeeName || user?.username || '您';
   const greeting = data?.greeting || '您好';
@@ -152,8 +152,6 @@ export default function AdminBriefingPage() {
   const restaurants = overviewData?.restaurants || [];
   const recentKeywords = overviewData?.recent_keywords || [];
 
-  const dateDisplay = formatDateDisplay(selectedDate);
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -166,59 +164,33 @@ export default function AdminBriefingPage() {
             </span>
           )}
         </div>
-        <UserMenu />
+        <div className="flex items-center gap-2">
+          <DatePicker
+            value={dateRange}
+            onChange={setDateRange}
+            maxDate={getChinaYesterday()}
+            presets={adminPresets}
+          />
+          <UserMenu />
+        </div>
       </header>
 
       <div className="px-4 py-4 space-y-4">
-        {/* Greeting banner + date navigation */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">
-              {greeting}，{userName.slice(0, 3)}
-            </h2>
-            {!isLoading && problems.length > 0 && (
-              <p className="text-sm text-gray-500 mt-0.5">
-                {restaurantCount} 家门店，{problems.length} 件事需要关注
-              </p>
-            )}
-            {!isLoading && problems.length === 0 && restaurantCount > 0 && (
-              <p className="text-sm text-gray-500 mt-0.5">
-                {restaurantCount} 家门店均运营良好
-              </p>
-            )}
-          </div>
-          {/* Date navigation */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 active:bg-gray-200"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <button
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'date';
-                input.value = selectedDate;
-                input.max = maxDate;
-                input.onchange = () => { if (input.value && input.value <= maxDate) setSelectedDate(input.value); };
-                input.showPicker?.();
-                input.click();
-              }}
-              className="text-sm text-gray-500 font-medium px-1 hover:text-gray-700"
-            >
-              {dateDisplay}
-            </button>
-            <button
-              onClick={() => canGoForward && setSelectedDate(shiftDate(selectedDate, 1))}
-              disabled={!canGoForward}
-              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
-                canGoForward ? 'text-gray-400 hover:bg-gray-100 active:bg-gray-200' : 'text-gray-200'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </div>
+        {/* Greeting banner */}
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">
+            {greeting}，{userName.slice(0, 3)}
+          </h2>
+          {!isLoading && problems.length > 0 && (
+            <p className="text-sm text-gray-500 mt-0.5">
+              {restaurantCount} 家门店，{problems.length} 件事需要关注
+            </p>
+          )}
+          {!isLoading && problems.length === 0 && restaurantCount > 0 && (
+            <p className="text-sm text-gray-500 mt-0.5">
+              {restaurantCount} 家门店均运营良好
+            </p>
+          )}
         </div>
 
         {/* Compact metrics row */}

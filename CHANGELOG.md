@@ -7,6 +7,25 @@
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-02-27
+
+### 新增 (Added)
+- 日期范围选择器 — 所有日期选择器支持范围选择（近7天、近30天、自定义范围）
+- `DateRange` 类型 + `singleDay()`、`isMultiDay()`、`dateRangeParams()` 工具函数
+- 日历两步范围选择 UX（第一次点击选起始、第二次点击选结束）
+- 后端 `resolveRange()` 工具函数，统一解析 `date`/`start_date`/`end_date` 参数
+- 管理层预设：昨日、前天、近7天、近30天
+- 店长/厨师长预设：今日、昨日、前天、近7天
+
+### 变更 (Changed)
+- 所有 API 端点（dashboard 7个 + meeting 1个）支持 `start_date`/`end_date` 范围参数
+- Supabase 查询模式从 `.eq()` 改为 `.gte().lte()` 支持范围过滤
+- 店长看板在多日模式下隐藏"比昨天"趋势箭头
+- 保留旧 `?date=` 参数向后兼容
+
+### 修复 (Fixed)
+- 区域编辑表单改为原位内联显示（来自 fix/region-inline-edit）
+
 ## [1.7.0] - 2026-02-26
 
 ### 新增 (Added)

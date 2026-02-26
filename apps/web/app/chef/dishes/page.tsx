@@ -9,7 +9,9 @@ import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
-import { getDateForSelection } from '@/lib/date-utils';
+import { getChinaToday, singleDay, dateRangeParams } from '@/lib/date-utils';
+import type { DateRange } from '@/lib/date-utils';
+import { DatePicker, storePresets } from '@/components/shared/DatePicker';
 
 interface FeedbackContext {
   visitId: string;
@@ -130,7 +132,7 @@ export default function ChefDishesPage() {
   const { user } = useAuth();
   const router = useRouter();
   const restaurantId = user?.restaurantId;
-  const [selectedDate, setSelectedDate] = useState('今日');
+  const [dateRange, setDateRange] = useState<DateRange>(() => singleDay(getChinaToday()));
   const [expandedDish, setExpandedDish] = useState<string | null>(null);
   const [expandedKitchen, setExpandedKitchen] = useState<string | null>(null);
   // Local-only "marked improved" state (resets on refresh; backend integration TBD)
@@ -171,9 +173,9 @@ export default function ChefDishesPage() {
     [playingVisitId, stopAudio],
   );
 
-  const date = getDateForSelection(selectedDate);
+  const rangeQs = dateRangeParams(dateRange);
   const params = restaurantId
-    ? new URLSearchParams({ restaurant_id: restaurantId, date, limit: '20' }).toString()
+    ? `restaurant_id=${restaurantId}&${rangeQs}&limit=20`
     : null;
 
   const { data: dishData, isLoading } = useSWR<DishRankingResponse>(
@@ -182,7 +184,7 @@ export default function ChefDishesPage() {
 
   // Also fetch sentiment summary for non-dish kitchen problems
   const sentimentParams = restaurantId
-    ? new URLSearchParams({ restaurant_id: restaurantId, date }).toString()
+    ? `restaurant_id=${restaurantId}&${rangeQs}`
     : null;
   const { data: sentimentData } = useSWR<SentimentSummaryResponse>(
     sentimentParams ? `/api/dashboard/sentiment-summary?${sentimentParams}` : null,
@@ -241,28 +243,16 @@ export default function ChefDishesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="text-base font-semibold text-gray-800">厨房反馈</div>
+      <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
+        <div className="text-base font-semibold text-gray-800">厨房反馈</div>
+        <div className="flex items-center gap-2">
+          <DatePicker
+            value={dateRange}
+            onChange={setDateRange}
+            maxDate={getChinaToday()}
+            presets={storePresets}
+          />
           <UserMenu />
-        </div>
-        {/* Date toggle */}
-        <div className="flex mt-2">
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
-            {['今日', '昨日'].map((option) => (
-              <button
-                key={option}
-                onClick={() => setSelectedDate(option)}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                  selectedDate === option
-                    ? 'bg-white text-gray-900 shadow-sm font-medium'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 

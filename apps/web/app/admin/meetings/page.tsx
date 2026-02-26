@@ -10,6 +10,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useManagedScope } from '@/hooks/useManagedScope';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { MeetingDetail } from '@/components/recorder/MeetingDetail';
+import { DatePicker, adminPresets } from '@/components/shared/DatePicker';
+import { getChinaYesterday, singleDay, dateRangeParams } from '@/lib/date-utils';
+import type { DateRange } from '@/lib/date-utils';
 import type { MeetingRecord, MeetingType, MeetingStatus } from '@/hooks/useMeetingStore';
 
 // --- Types ---
@@ -51,12 +54,6 @@ const MEETING_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   cross_store_review: { label: '经营会', color: 'bg-indigo-100 text-indigo-700' },
   one_on_one: { label: '店长沟通', color: 'bg-teal-100 text-teal-700' },
 };
-
-function getYesterday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
-}
 
 function formatDateLabel(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -197,12 +194,12 @@ function StoreMeetingCard({
 export default function AdminMeetingsPage() {
   const { user } = useAuth();
   const { managedIdsParam } = useManagedScope();
-  const [date, setDate] = useState(getYesterday);
+  const [dateRange, setDateRange] = useState<DateRange>(() => singleDay(getChinaYesterday()));
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingRecord | null>(null);
   const [showMyMeetings, setShowMyMeetings] = useState(true);
 
   const { data: apiData, isLoading, error } = useSWR<AdminOverviewResponse>(
-    `/api/meeting/admin-overview?date=${date}${user?.id ? `&employee_id=${user.id}` : ''}${managedIdsParam}`
+    `/api/meeting/admin-overview?${dateRangeParams(dateRange)}${user?.id ? `&employee_id=${user.id}` : ''}${managedIdsParam}`
   );
   const data = apiData;
   const hasData = !!data;
@@ -216,23 +213,18 @@ export default function AdminMeetingsPage() {
     [data],
   );
 
-  const handleDateChange = (offset: number) => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + offset);
-    // Don't go into the future
-    const today = new Date().toISOString().split('T')[0];
-    const newDate = d.toISOString().split('T')[0];
-    if (newDate <= today) {
-      setDate(newDate);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">会议</h1>
         <div className="flex items-center gap-2">
+          <DatePicker
+            value={dateRange}
+            onChange={setDateRange}
+            maxDate={getChinaYesterday()}
+            presets={adminPresets}
+          />
           <Link
             href="/admin/meetings/record"
             className="flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
@@ -245,31 +237,6 @@ export default function AdminMeetingsPage() {
           <UserMenu />
         </div>
       </header>
-
-      {/* Date Picker */}
-      <div className="px-4 py-3 flex items-center justify-between">
-        <button
-          onClick={() => handleDateChange(-1)}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <span className="text-sm font-medium text-gray-700">
-          {formatDateLabel(date)}
-          {date === getYesterday() && <span className="text-gray-400 ml-1">· 昨日</span>}
-          {date === new Date().toISOString().split('T')[0] && <span className="text-gray-400 ml-1">· 今日</span>}
-        </span>
-        <button
-          onClick={() => handleDateChange(1)}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
 
       <div className="px-4 space-y-3">
         {/* Loading */}

@@ -89,11 +89,12 @@ function QAConversation({ questions, answers }: { questions: string[]; answers: 
 }
 
 interface CustomerInsightsProps {
-  date?: string;
+  startDate: string;
+  endDate: string;
   managedIdsParam?: string;
 }
 
-export function CustomerInsights({ date, managedIdsParam = '' }: CustomerInsightsProps) {
+export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: CustomerInsightsProps) {
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -129,9 +130,7 @@ export function CustomerInsights({ date, managedIdsParam = '' }: CustomerInsight
   );
 
   // Fetch sentiment summary for feedback hot words
-  const sentimentUrl = date
-    ? `/api/dashboard/sentiment-summary?restaurant_id=all&date=${date}${managedIdsParam}`
-    : `/api/dashboard/sentiment-summary?restaurant_id=all${managedIdsParam}`;
+  const sentimentUrl = `/api/dashboard/sentiment-summary?restaurant_id=all&start_date=${startDate}&end_date=${endDate}${managedIdsParam}`;
   const { data: sentimentData, isLoading: sentLoading } = useSWR<SentimentSummaryResponse>(sentimentUrl);
 
   const suggestions = suggestionsData?.suggestions ?? [];

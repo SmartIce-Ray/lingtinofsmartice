@@ -37,3 +37,26 @@ export function getChinaHour(): number {
   });
   return parseInt(chinaTime, 10);
 }
+
+/**
+ * Resolve date range from query parameters.
+ * Supports: start_date+end_date (range), date (single day), or default.
+ * Preserves backward compatibility with existing ?date= callers.
+ */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function resolveRange(
+  date?: string,
+  startDate?: string,
+  endDate?: string,
+  defaultFn: () => string = getChinaDateString,
+): { start: string; end: string } {
+  if (startDate && endDate && DATE_RE.test(startDate) && DATE_RE.test(endDate)) {
+    // Ensure start <= end
+    const [s, e] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+    return { start: s, end: e };
+  }
+  if (date && DATE_RE.test(date)) return { start: date, end: date };
+  const d = defaultFn();
+  return { start: d, end: d };
+}
