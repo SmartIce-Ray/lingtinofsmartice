@@ -1,7 +1,7 @@
 // Daily Briefing Hook - Auto-trigger daily AI briefing on first visit
-// v1.1 - Don't set sessionStorage flag eagerly; rely on messageCount to skip
+// v1.2 - Return reset() so clearMessages can re-trigger briefing
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { SendMessageOptions } from './useChatStream';
 
@@ -33,4 +33,11 @@ export function useDailyBriefing({
     // Trigger briefing with hidden user message
     sendMessage('__DAILY_BRIEFING__', { hideUserMessage: true });
   }, [isInitialized, isLoading, user, messageCount, sendMessage]);
+
+  // Reset so next render with messageCount=0 will re-trigger briefing
+  const reset = useCallback(() => {
+    hasSent.current = false;
+  }, []);
+
+  return { reset };
 }

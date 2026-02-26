@@ -52,7 +52,7 @@ function ChatContent({ config }: ChatPageProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-trigger daily briefing
-  useDailyBriefing({
+  const { reset: resetBriefing } = useDailyBriefing({
     sendMessage,
     isLoading,
     isInitialized,
@@ -107,7 +107,7 @@ function ChatContent({ config }: ChatPageProps) {
         <h1 className="text-lg font-semibold text-gray-900">{config.headerTitle}</h1>
         <div className="flex items-center gap-3">
           <button
-            onClick={clearMessages}
+            onClick={() => { resetBriefing(); clearMessages(); }}
             disabled={isLoading}
             className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
           >
