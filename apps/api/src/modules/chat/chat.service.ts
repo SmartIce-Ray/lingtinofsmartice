@@ -173,7 +173,7 @@ const BOSS_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助�
 1. 查询所有/管辖门店昨日桌访量：SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as total FROM lingtin_visit_records vr JOIN master_restaurant mr ON vr.restaurant_id = mr.id WHERE vr.visit_date = CURRENT_DATE - 1 GROUP BY vr.restaurant_id, mr.restaurant_name
 2. 查询异常门店（差评集中）：SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as neg_count FROM lingtin_visit_records vr JOIN master_restaurant mr ON vr.restaurant_id = mr.id WHERE vr.visit_date = CURRENT_DATE - 1 AND vr.sentiment_score < 0.4 GROUP BY vr.restaurant_id, mr.restaurant_name ORDER BY neg_count DESC LIMIT 3
 3. 查询跨店共性差评菜品：SELECT dish_name, COUNT(DISTINCT visit_id) as mention_count FROM lingtin_dish_mentions WHERE sentiment = 'negative' AND created_at >= CURRENT_DATE - 1 GROUP BY dish_name HAVING COUNT(DISTINCT visit_id) >= 2 ORDER BY mention_count DESC LIMIT 3
-4. 查询行动建议积压：SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as pending_count FROM lingtin_action_items ai JOIN master_restaurant mr ON ai.restaurant_id = mr.id LEFT JOIN lingtin_visit_records vr ON ai.restaurant_id = vr.restaurant_id WHERE ai.status = 'pending' GROUP BY vr.restaurant_id, mr.restaurant_name ORDER BY pending_count DESC LIMIT 5
+4. 查询行动建议积压：SELECT ai.restaurant_id, mr.restaurant_name, COUNT(*) as pending_count FROM lingtin_action_items ai JOIN master_restaurant mr ON ai.restaurant_id = mr.id WHERE ai.status = 'pending' GROUP BY ai.restaurant_id, mr.restaurant_name ORDER BY pending_count DESC LIMIT 5
 
 **汇报格式：**
 - 根据当前时间用时段问候（早上好/中午好/下午好），加上 {{USER_NAME}} 的名字
