@@ -1,9 +1,6 @@
 // Chat Stream Hook - Handle streaming chat responses with session persistence
+// v3.0 - Added hideUserMessage option, role-based STORAGE_KEY, removed static welcome message
 // v2.4 - Added role_code, user_name, employee_id for role-based prompts and chat history
-// v2.3 - Changed: Direct backend API calls (removed Next.js proxy layer)
-// v2.2 - Fixed: Clear thinkingStatus when stopping request, show "被打断" message
-// v2.1 - Exposed isInitialized to fix race condition with URL query parameters
-// v2.0 - Added retry functionality for failed messages
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getAuthHeaders, useAuth } from '@/contexts/AuthContext';
@@ -20,52 +17,54 @@ export interface Message {
   originalQuestion?: string; // 保存原始问题用于重试
 }
 
+export interface SendMessageOptions {
+  hideUserMessage?: boolean; // 不显示用户消息气泡（用于 briefing 触发）
+}
+
 interface UseChatStreamReturn {
   messages: Message[];
   isLoading: boolean;
   isInitialized: boolean;  // True when messages have been loaded from storage
   error: string | null;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, options?: SendMessageOptions) => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
   stopRequest: () => void;
   clearMessages: () => void;
 }
 
-const STORAGE_KEY = 'lingtin_chat_messages';
-const WELCOME_MESSAGE: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  content: '你好！我是 Lingtin AI 助手。你可以问我任何关于桌访数据的问题，例如："上周客人对新上的鲈鱼有什么看法？"',
-};
+// Build role-based storage key
+function getStorageKey(roleCode?: string): string {
+  return `lingtin_chat_${roleCode || 'default'}`;
+}
 
 // Load messages from sessionStorage
-function getStoredMessages(): Message[] {
-  if (typeof window === 'undefined') return [WELCOME_MESSAGE];
+function getStoredMessages(storageKey: string): Message[] {
+  if (typeof window === 'undefined') return [];
   try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
+    const stored = sessionStorage.getItem(storageKey);
     if (stored) {
       const messages = JSON.parse(stored) as Message[];
       // Clear any streaming state from previous session
       return messages.map(msg => ({ ...msg, isStreaming: false }));
     }
-    return [WELCOME_MESSAGE];
+    return [];
   } catch {
-    return [WELCOME_MESSAGE];
+    return [];
   }
 }
 
 // Save messages to sessionStorage
-function saveMessages(messages: Message[]) {
+function saveMessages(messages: Message[], storageKey: string) {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    sessionStorage.setItem(storageKey, JSON.stringify(messages));
   } catch {
     // Ignore storage errors
   }
 }
 
 export function useChatStream(): UseChatStreamReturn {
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +78,7 @@ export function useChatStream(): UseChatStreamReturn {
   const roleCode = user?.roleCode;
   const userName = user?.employeeName;
   const employeeId = user?.id;
+  const storageKey = getStorageKey(roleCode);
 
   // Keep messagesRef in sync with messages state
   useEffect(() => {
@@ -87,22 +87,24 @@ export function useChatStream(): UseChatStreamReturn {
 
   // Load messages from sessionStorage on mount
   useEffect(() => {
-    const stored = getStoredMessages();
+    const stored = getStoredMessages(storageKey);
     setMessages(stored);
     setIsInitialized(true);
-  }, []);
+  }, [storageKey]);
 
   // Save messages to sessionStorage when they change
   useEffect(() => {
     if (isInitialized) {
-      saveMessages(messages);
+      saveMessages(messages, storageKey);
     }
-  }, [messages, isInitialized]);
+  }, [messages, isInitialized, storageKey]);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, options?: SendMessageOptions) => {
     if (!content.trim() || isLoading) {
       return;
     }
+
+    const { hideUserMessage = false } = options || {};
 
     // Cancel any ongoing request
     if (abortControllerRef.current) {
@@ -112,7 +114,7 @@ export function useChatStream(): UseChatStreamReturn {
     // Build conversation history BEFORE adding new messages (to avoid async state issues)
     // Include all previous messages plus the current user message
     const previousMessages = messagesRef.current.filter(
-      msg => msg.id !== 'welcome' && !msg.isStreaming && msg.content.trim()
+      msg => !msg.isStreaming && msg.content.trim()
     );
     const historyMessages = [
       ...previousMessages.slice(-9).map(msg => ({ role: msg.role, content: msg.content })),
@@ -122,12 +124,14 @@ export function useChatStream(): UseChatStreamReturn {
     const userMessageId = `user-${Date.now()}`;
     const assistantMessageId = `assistant-${Date.now()}`;
 
-    // Add user message
-    setMessages(prev => [...prev, {
-      id: userMessageId,
-      role: 'user',
-      content,
-    }]);
+    // Add user message (optionally hidden)
+    if (!hideUserMessage) {
+      setMessages(prev => [...prev, {
+        id: userMessageId,
+        role: 'user',
+        content,
+      }]);
+    }
 
     setIsLoading(true);
     setError(null);
@@ -260,10 +264,15 @@ export function useChatStream(): UseChatStreamReturn {
       abortControllerRef.current.abort();
     }
 
-    setMessages([WELCOME_MESSAGE]);
+    setMessages([]);
+    // Clear the briefing flag so it regenerates
+    if (typeof window !== 'undefined' && roleCode) {
+      const today = new Date().toISOString().slice(0, 10);
+      sessionStorage.removeItem(`lingtin_briefing_${roleCode}_${today}`);
+    }
     setError(null);
     setIsLoading(false);
-  }, []);
+  }, [roleCode]);
 
   // Stop ongoing request without clearing messages
   const stopRequest = useCallback(() => {

@@ -181,6 +181,33 @@ body {
   font-weight: 600;
 }
 
+/* Action link buttons rendered from lingtin:// protocol */
+.lingtin-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  background-color: rgb(239 246 255);
+  color: rgb(29 78 216);
+  border: 1px solid rgb(191 219 254);
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  margin: 0.125rem 0;
+}
+
+.lingtin-action-btn:hover {
+  background-color: rgb(219 234 254);
+  border-color: rgb(147 197 253);
+}
+
+.lingtin-action-btn:active {
+  transform: scale(0.97);
+}
+
 /* Update banner slide animation */
 @keyframes slide-down {
   from {

@@ -39,7 +39,7 @@ export default function ChefLayout({
   }
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="min-h-screen pb-16">
       {children}
       <ChefBottomNav />
     </div>

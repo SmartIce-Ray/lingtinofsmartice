@@ -1,5 +1,5 @@
 // Chef Bottom Navigation Component - Navigation for head_chef role
-// 3 tabs: 待办 / 菜品 / 会议, h-20 with 48px touch targets
+// v2.0 - 4 tabs: 智库(1st) / 待办 / 菜品 / 会议
 
 'use client';
 
@@ -7,6 +7,15 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const NAV_ITEMS = [
+  {
+    href: '/chef/chat',
+    label: '智库',
+    icon: (active: boolean) => (
+      <svg className="w-6 h-6" fill={active ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={active ? 0 : 2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    ),
+  },
   {
     href: '/chef/dashboard',
     label: '待办',
@@ -41,14 +50,14 @@ export function ChefBottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom">
-      <div className="flex items-center justify-around h-20">
+      <div className="flex items-center justify-around h-16">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center flex-1 min-h-[48px] transition-colors ${
+              className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
                 isActive ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'
               }`}
             >

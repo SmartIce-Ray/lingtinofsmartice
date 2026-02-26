@@ -19,13 +19,13 @@ export default function HomePage() {
       return;
     }
 
-    // Redirect based on role
+    // Redirect based on role — AI 智库 as home for all roles
     if (user.roleCode === 'administrator') {
-      router.replace('/admin/briefing');
+      router.replace('/admin/chat');
     } else if (user.roleCode === 'head_chef' || user.roleCode === 'chef') {
-      router.replace('/chef/dashboard');
+      router.replace('/chef/chat');
     } else {
-      router.replace('/recorder');
+      router.replace('/chat');
     }
   }, [user, isLoading, router]);
 

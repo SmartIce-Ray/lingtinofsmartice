@@ -7,6 +7,27 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-02-27
+
+### 新增 (Added)
+- AI 智库升级为所有角色首页入口 — 登录后直接进入 AI 聊天页
+- 每日智能汇报 — 每天首次打开自动生成角色化的 AI 汇报（店长/管理层/厨师长各不同）
+- 厨师长 AI 聊天功能 — 新增 `/chef/chat` 页面，厨师长首次获得 AI 助手
+- `lingtin://` 行动链接协议 — AI 汇报中的建议自动渲染为可点击的 pill 按钮，一键跳转到相关页面
+- `:::quick-questions:::` 追问解析 — AI 汇报末尾的建议问题渲染为快捷 pill
+- `useDailyBriefing` hook — 自动触发每日汇报（sessionStorage 防重复）
+- `ChatPage` 统一组件 — 三个角色的聊天页共享核心逻辑
+
+### 变更 (Changed)
+- 底部导航重排 — 三个角色的智库 tab 均移至第一位
+- 登录跳转 — 所有角色登录后跳转到各自的 AI 聊天页（原：店长→录音、管理层→总览、厨师长→待办）
+- 厨师长导航从 3 tab 扩展为 4 tab（智库/待办/菜品/会议）
+- `useChatStream` 升级 — 支持 `hideUserMessage` 选项、按角色隔离 sessionStorage、移除静态欢迎语
+- `MarkdownRenderer` 升级 — 支持 `lingtin://` 链接渲染为行动按钮 + `onQuickQuestion` 回调
+- 后端 chat.service.ts — 新增 CHEF_SYSTEM_PROMPT、3-way 角色选择、action_items 表查询权限、汇报模式 max_tokens 3072
+- `allowedTables` 新增 `lingtin_action_items` 和 `master_restaurant`（支持 JOIN 查询门店名称）
+- restaurant_id 作用域过滤扩展到 action_items 和 dish_mentions 表
+
 ## [1.7.1] - 2026-02-27
 
 ### 新增 (Added)

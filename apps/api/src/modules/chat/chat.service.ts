@@ -1,5 +1,5 @@
 // Chat Service - AI assistant with tool use for database queries
-// v3.6 - Fixed: AI must call tool directly without saying "please wait", added PostgreSQL date syntax
+// v4.0 - Added: Chef prompt, daily briefing mode with lingtin:// action links, action_items table
 // IMPORTANT: Never return raw_transcript to avoid context explosion
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -78,6 +78,25 @@ const MANAGER_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析�
 - 数据少 → "目前数据量较少，仅供参考"
 - 不确定 → 如实说明，不编造数字
 
+## 每日简报模式
+当用户消息是 \`__DAILY_BRIEFING__\` 时，生成每日智能汇报。执行以下查询后组织汇报：
+1. 查询昨日桌访总数：SELECT COUNT(*) as total FROM lingtin_visit_records WHERE visit_date = CURRENT_DATE - 1
+2. 查询昨日差评反馈：SELECT table_id, feedbacks, ai_summary FROM lingtin_visit_records WHERE visit_date = CURRENT_DATE - 1 AND sentiment_score < 0.4 LIMIT 5
+3. 查询昨日好评菜品：SELECT dish_name, feedback_text FROM lingtin_dish_mentions WHERE sentiment = 'positive' AND created_at >= CURRENT_DATE - 1 LIMIT 5
+4. 查询未处理行动建议：SELECT COUNT(*) as cnt FROM lingtin_action_items WHERE status = 'pending'
+
+**汇报格式：**
+- 根据当前时间用时段问候（早上好/中午好/下午好），加上 {{USER_NAME}} 的名字
+- 一句话概况：昨天走访了X桌，X位顾客不太满意
+- 问题用 ⚠️ 标记（最多3个），每个问题带：菜名/桌号 + 顾客原话（用 ↳ 缩进）+ 行动建议（用 → 标记，App内跳转用 [按钮文字](lingtin://path) 格式）
+- 亮点用 ✨ 标记（最多2个），引用好评原话
+- 如有未处理的行动建议，提醒并给跳转：[处理待办](lingtin://dashboard#action-items)
+- 今天桌访重点：基于昨日差评建议今天该问什么
+- 末尾追问建议，格式：:::quick-questions\\n- 问题1\\n- 问题2\\n- 问题3\\n:::
+- 可用行动链接：lingtin://recorder（开始桌访）、lingtin://dashboard（查看看板）、lingtin://dashboard#action-items（处理待办）
+- 语气：像同事聊天，温暖鼓励，不用百分比和分数，用自然语言
+- 如果没有数据，友好说明并鼓励今天开始桌访
+
 ## 当前上下文
 - 餐厅ID: {{RESTAURANT_ID}}
 - 当前日期: {{CURRENT_DATE}}`;
@@ -149,9 +168,111 @@ const BOSS_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助�
 - 数据少 → "目前数据量较少，仅供参考"
 - 不确定 → 如实说明，不编造数字
 
+## 每日简报模式
+当用户消息是 \`__DAILY_BRIEFING__\` 时，生成每日智能汇报。执行以下查询后组织汇报：
+1. 查询所有/管辖门店昨日桌访量：SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as total FROM lingtin_visit_records vr JOIN master_restaurant mr ON vr.restaurant_id = mr.id WHERE vr.visit_date = CURRENT_DATE - 1 GROUP BY vr.restaurant_id, mr.restaurant_name
+2. 查询异常门店（差评集中）：SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as neg_count FROM lingtin_visit_records vr JOIN master_restaurant mr ON vr.restaurant_id = mr.id WHERE vr.visit_date = CURRENT_DATE - 1 AND vr.sentiment_score < 0.4 GROUP BY vr.restaurant_id, mr.restaurant_name ORDER BY neg_count DESC LIMIT 3
+3. 查询跨店共性差评菜品：SELECT dish_name, COUNT(DISTINCT visit_id) as mention_count FROM lingtin_dish_mentions WHERE sentiment = 'negative' AND created_at >= CURRENT_DATE - 1 GROUP BY dish_name HAVING COUNT(DISTINCT visit_id) >= 2 ORDER BY mention_count DESC LIMIT 3
+4. 查询行动建议积压：SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as pending_count FROM lingtin_action_items ai JOIN master_restaurant mr ON ai.restaurant_id = mr.id LEFT JOIN lingtin_visit_records vr ON ai.restaurant_id = vr.restaurant_id WHERE ai.status = 'pending' GROUP BY vr.restaurant_id, mr.restaurant_name ORDER BY pending_count DESC LIMIT 5
+
+**汇报格式：**
+- 根据当前时间用时段问候（早上好/中午好/下午好），加上 {{USER_NAME}} 的名字
+- 一句话全局："X家门店昨天整体正常，X家需要关注"
+- 问题门店用 ⚠️ 标记（最多3个），含门店名+异常描述+行动建议（如"建议联系X店长了解情况"）
+- 跨店共性：同一道菜在多家店差评 → 建议统一调整
+- 执行力信号：哪个门店行动建议积压较多
+- 亮点用 ✨ 标记（最多2个）
+- App内跳转用 [按钮文字](lingtin://path) 格式
+- 末尾追问建议，格式：:::quick-questions\\n- 问题1\\n- 问题2\\n- 问题3\\n:::
+- 可用行动链接：lingtin://admin/briefing（查看总览）、lingtin://admin/insights（查看洞察）、lingtin://admin/meetings（查看会议）
+- 语气：简洁汇报风，像给老板做 briefing
+- 如果没有数据，说明当前没有需要关注的异常
+
 ## 当前上下文
 - 餐厅ID: {{RESTAURANT_ID}}
 - 当前日期: {{CURRENT_DATE}}`;
+
+// System prompt for the AI assistant - Chef version (厨师长)
+const CHEF_SYSTEM_PROMPT = `你是灵听，一个专业的厨房运营助手。你正在与厨师长 {{USER_NAME}} 对话，帮助他/她提升菜品质量和厨房运营效率。
+
+## 核心原则：理解用户意图
+收到问题后，**先判断用户真正想问什么**：
+- 闲聊、打招呼、问你是谁 → 直接回答，不查数据库
+- 问之前聊过的内容（如"我叫什么"）→ 根据对话历史回答
+- **业务问题**（菜品、反馈、厨房任务等）→ **立即调用 query_database 工具，不要说"请稍等"或"我来查一下"之类的话**
+
+## 数据库字段（内部使用，绝不向用户暴露）
+**lingtin_visit_records** 表：
+- table_id: 桌号（A1, B3, D5）
+- ai_summary: 20字摘要
+- sentiment_score: 情绪分 0-1（0=极差, 1=极好）
+- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral)
+- visit_date, created_at: 时间
+
+**lingtin_dish_mentions** 表：
+- dish_name: 菜品名
+- sentiment: positive/negative/neutral
+- feedback_text: 具体评价
+
+**lingtin_action_items** 表：
+- category: dish_quality/service_speed/environment/staff_attitude/other
+- suggestion_text: 改善建议
+- priority: high/medium/low
+- status: pending/acknowledged/resolved/dismissed
+
+## 智能回答策略（重要！）
+作为厨师长的助手，**只关注菜品和厨房相关**：
+
+**问菜品反馈** → 查 lingtin_dish_mentions，按好评/差评分类，重点关注差评原因
+**问某道菜** → 查该菜品所有 mentions，总结顾客对该菜的看法
+**问厨房任务** → 查 lingtin_action_items 中 category='dish_quality' 的待办
+**问趋势** → 查最近几天的菜品 mentions，看哪些菜持续差评
+**问好评菜** → 查 sentiment='positive' 的 mentions，总结做对了什么
+
+## 查询规范
+1. **永远不要查询 raw_transcript** - 太大会崩溃
+2. 限制返回行数 LIMIT 10-20
+3. 按时间倒序 ORDER BY created_at DESC
+4. **日期查询语法（PostgreSQL）**：
+   - 今天: \`visit_date = CURRENT_DATE\`
+   - 本周: \`visit_date >= date_trunc('week', CURRENT_DATE)\`
+   - 日期范围: \`visit_date BETWEEN '2026-01-25' AND '2026-01-31'\`
+
+## 回答规范（非常重要）
+1. **像厨房人之间聊天一样**，直接、实用、不绕弯
+2. **绝对不暴露技术细节**：
+   - ❌ "sentiment_score 是 0.85" → ✅ "顾客很满意"
+   - ❌ 提及 restaurant_id、JSONB 等术语
+3. **菜品问题说得具体**："花生不脆"比"口感有问题"有用100倍
+4. **直接给改进方向**：发现问题时，说出具体的厨房操作建议（如"炸制时间延长30秒"）
+5. **引用顾客原话**：让厨师长知道顾客真实的感受
+
+## 诚实原则
+- 查询失败 → "查询遇到问题，请稍后再试"
+- 数据少 → "目前数据量较少，仅供参考"
+- 不确定 → 如实说明，不编造数字
+
+## 每日简报模式
+当用户消息是 \`__DAILY_BRIEFING__\` 时，生成每日智能汇报。执行以下查询后组织汇报：
+1. 查询昨日菜品差评：SELECT dm.dish_name, dm.feedback_text, vr.table_id FROM lingtin_dish_mentions dm JOIN lingtin_visit_records vr ON dm.visit_id = vr.id WHERE dm.sentiment = 'negative' AND dm.created_at >= CURRENT_DATE - 1 ORDER BY dm.created_at DESC LIMIT 10
+2. 查询昨日菜品好评：SELECT dish_name, feedback_text FROM lingtin_dish_mentions WHERE sentiment = 'positive' AND created_at >= CURRENT_DATE - 1 LIMIT 5
+3. 查询厨房待办：SELECT COUNT(*) as cnt, priority FROM lingtin_action_items WHERE category = 'dish_quality' AND status = 'pending' GROUP BY priority
+
+**汇报格式：**
+- 根据当前时间用时段问候（早上好/中午好/下午好），加上 {{USER_NAME}} 的名字
+- 备餐提醒：基于连续差评的菜品，直接说要调整什么（如"酸菜鱼连续2天偏辣，今天减辣"）
+- 菜品差评用 ⚠️ 标记（最多3个），每个含：菜名+具体问题+顾客原话（用 ↳ 缩进）+ 改进方向（用 → 标记）
+- 好评菜用 ✨ 标记（最多2个），说"保持当前做法"
+- 厨房待办提醒：[处理厨房待办](lingtin://chef/dashboard)
+- 末尾追问建议，格式：:::quick-questions\\n- 问题1\\n- 问题2\\n- 问题3\\n:::
+- 可用行动链接：lingtin://chef/dashboard（处理待办）、lingtin://chef/dishes（查看菜品）
+- 语气：厨房人之间的直接对话，不绕弯子
+- 如果没有数据，鼓励今天关注出品质量
+
+## 当前上下文
+- 餐厅ID: {{RESTAURANT_ID}}
+- 当前日期: {{CURRENT_DATE}}`;
+
 
 // Tool definitions for function calling
 const TOOLS = [
@@ -159,7 +280,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'query_database',
-      description: '查询餐厅桌访数据库。只支持 SELECT 查询。可查询 lingtin_visit_records（桌访记录）和 lingtin_dish_mentions（菜品提及）表。',
+      description: '查询餐厅桌访数据库。只支持 SELECT 查询。可查询 lingtin_visit_records（桌访记录）、lingtin_dish_mentions（菜品提及）、lingtin_action_items（行动建议）和 lingtin_table_sessions（开台数据）表。支持 JOIN 查询 master_restaurant 表获取门店名称。',
       parameters: {
         type: 'object',
         properties: {
@@ -213,9 +334,10 @@ this.logger.log(`Role: ${roleCode}, User: ${userName}`);
 
     const currentDate = getChinaDateString();
 
-    // Select system prompt based on role
+    // Select system prompt based on role (3-way: boss / chef / manager)
+    const isChef = roleCode === 'head_chef' || roleCode === 'chef';
     const isBoss = roleCode === 'administrator';
-    const basePrompt = isBoss ? BOSS_SYSTEM_PROMPT : MANAGER_SYSTEM_PROMPT;
+    const basePrompt = isBoss ? BOSS_SYSTEM_PROMPT : isChef ? CHEF_SYSTEM_PROMPT : MANAGER_SYSTEM_PROMPT;
     const systemPrompt = basePrompt
       .replace('{{RESTAURANT_ID}}', restaurantId)
       .replace('{{CURRENT_DATE}}', currentDate)
@@ -247,15 +369,19 @@ this.logger.log(`Messages in context: ${messages.length}`);
       let iteration = 0;
       const maxIterations = 5;
 
+      const isBriefing = message === '__DAILY_BRIEFING__';
+
       while (iteration < maxIterations) {
         iteration++;
         this.logger.log(`[Iteration ${iteration}] Calling Claude API...`);
 
         // Send thinking status to client before API call
-        const thinkingMessage = iteration === 1 ? '正在思考...' : '正在整理答案...';
+        const thinkingMessage = iteration === 1
+          ? (isBriefing ? '正在生成今日汇报...' : '正在思考...')
+          : '正在整理答案...';
         res.write(`data: ${JSON.stringify({ type: 'thinking', content: thinkingMessage })}\n\n`);
 
-        const response = await this.callClaudeAPI(systemPrompt, messages);
+        const response = await this.callClaudeAPI(systemPrompt, messages, isBriefing);
 
         if (!response.choices || response.choices.length === 0) {
           throw new Error('Empty response from API');
@@ -351,7 +477,7 @@ this.logger.log(`Messages in context: ${messages.length}`);
   /**
    * Call AI API via OpenRouter endpoint
    */
-  private async callClaudeAPI(systemPrompt: string, messages: ChatMessage[]) {
+  private async callClaudeAPI(systemPrompt: string, messages: ChatMessage[], isBriefing = false) {
     const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
@@ -360,7 +486,7 @@ this.logger.log(`Messages in context: ${messages.length}`);
 
     const requestBody = {
       model: 'deepseek/deepseek-chat-v3-0324',
-      max_tokens: 2048,
+      max_tokens: isBriefing ? 3072 : 2048,
       messages: [
         { role: 'system', content: systemPrompt },
         ...messages,
@@ -462,8 +588,8 @@ this.logger.log(`Executing tool: ${name}`);
     }
 
     // Security: Only allow queries on specific tables
-    const allowedTables = ['lingtin_visit_records', 'lingtin_dish_mentions', 'lingtin_table_sessions'];
-    const tablePattern = /from\s+([a-z_]+)/gi;
+    const allowedTables = ['lingtin_visit_records', 'lingtin_dish_mentions', 'lingtin_table_sessions', 'lingtin_action_items', 'master_restaurant'];
+    const tablePattern = /(?:from|join)\s+([a-z_]+)/gi;
     const matches = [...sql.matchAll(tablePattern)];
     for (const match of matches) {
       const tableName = match[1].toLowerCase();
@@ -479,31 +605,45 @@ this.logger.log(`Executing tool: ${name}`);
 
     const client = this.supabase.getClient();
 
-    // For lingtin_visit_records, add restaurant scope filter for security
+    // Fix #1: UUID-validate restaurantId before SQL interpolation
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const DEFAULT_RESTAURANT_ID = '0b9e9031-4223-4124-b633-e3a853abfb8f';
+    const safeRestaurantId = UUID_RE.test(restaurantId) ? restaurantId : DEFAULT_RESTAURANT_ID;
+
+    // Build scope filter based on managed IDs or single restaurant
     let modifiedSql = sql;
-    if (normalizedSql.includes('lingtin_visit_records')) {
-      // Add restaurant scope filter if not already present
-      if (!normalizedSql.includes('restaurant_id')) {
-        // Determine the filter: managed IDs (regional), single ID (store), or none (HQ)
-        let scopeFilter: string;
-        if (managedRestaurantIds && managedRestaurantIds.length > 0) {
-          const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          const validIds = managedRestaurantIds.filter(id => UUID_RE.test(id));
-          const idList = (validIds.length > 0 ? validIds : [restaurantId])
-            .map(id => `'${id}'`).join(',');
-          scopeFilter = `restaurant_id IN (${idList})`;
-        } else {
-          scopeFilter = `restaurant_id = '${restaurantId}'`;
-        }
+    const buildScopeFilter = (alias?: string): string => {
+      const prefix = alias ? `${alias}.` : '';
+      if (managedRestaurantIds && managedRestaurantIds.length > 0) {
+        const validIds = managedRestaurantIds.filter(id => UUID_RE.test(id));
+        const idList = (validIds.length > 0 ? validIds : [safeRestaurantId])
+          .map(id => `'${id}'`).join(',');
+        return `${prefix}restaurant_id IN (${idList})`;
+      }
+      return `${prefix}restaurant_id = '${safeRestaurantId}'`;
+    };
+
+    // Fix #2: For tables with restaurant_id, always add scope filter for security
+    // Check if WHERE clause already has restaurant_id as an equality/IN filter (not just in JOINs)
+    const tablesToScope = ['lingtin_visit_records', 'lingtin_action_items', 'lingtin_dish_mentions'];
+    const whereClauseMatch = normalizedSql.match(/\bwhere\b([\s\S]*)/i);
+    const whereClause = whereClauseMatch ? whereClauseMatch[1] : '';
+    const hasRestaurantIdInWhere = whereClause.includes('restaurant_id');
+
+    for (const tableName of tablesToScope) {
+      if (normalizedSql.includes(tableName) && !hasRestaurantIdInWhere) {
+        // Check if table has an alias (e.g., "lingtin_visit_records vr")
+        const aliasMatch = sql.match(new RegExp(`${tableName}\\s+([a-z]{1,3})(?:\\s|$|,)`, 'i'));
+        const alias = aliasMatch?.[1];
+        const scopeFilter = buildScopeFilter(alias);
 
         if (normalizedSql.includes('where')) {
-          modifiedSql = sql.replace(/where/i, `WHERE ${scopeFilter} AND`);
-        } else if (normalizedSql.includes('from lingtin_visit_records')) {
-          modifiedSql = sql.replace(
-            /from\s+lingtin_visit_records/i,
-            `FROM lingtin_visit_records WHERE ${scopeFilter}`
-          );
+          modifiedSql = modifiedSql.replace(/\bwhere\b/i, `WHERE ${scopeFilter} AND`);
+        } else {
+          const tableRegex = new RegExp(`(from\\s+${tableName}(?:\\s+[a-z]{1,3})?)`, 'i');
+          modifiedSql = modifiedSql.replace(tableRegex, `$1 WHERE ${scopeFilter}`);
         }
+        break; // Only add scope once (for the main FROM table)
       }
     }
 

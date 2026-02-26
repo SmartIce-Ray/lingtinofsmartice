@@ -84,13 +84,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(TOKEN_KEY, data.access_token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
 
-    // Route based on role
+    // Route based on role — AI 智库 as home for all roles
     if (data.user.roleCode === 'administrator') {
-      router.push('/admin/briefing');
+      router.push('/admin/chat');
     } else if (data.user.roleCode === 'head_chef' || data.user.roleCode === 'chef') {
-      router.push('/chef/dashboard');
+      router.push('/chef/chat');
     } else {
-      router.push('/recorder');
+      router.push('/chat');
     }
   }, [router]);
 

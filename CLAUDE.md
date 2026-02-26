@@ -214,8 +214,9 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
-| v1.7.0 门店区域分组 | feat/product-feedback | 开发完成，待用户本地测试 | DB migration 已执行。master_region 表 + 4 个初始区域 + 认证层 region 解析 + RegionModule 8 端点 + 前端区域管理页 |
-| v1.6.0 区域管理层支持 | feat/product-feedback | 开发完成，待提交 | DB migration 已执行。认证+6个API端点+前端全部适配 |
+| v1.7.1 日期范围选择器 | feat/date-range-picker | ✅ 已合并 | PR #16 已 merge。DateRange 类型 + 日历范围选择 UX + 8 个 API 端点支持 start_date/end_date + 预设（近7天/近30天）|
+| v1.7.0 门店区域分组 | feat/date-range-picker | ✅ 已合并 | PR #16 含区域编辑内联修复。master_region 表 + 4 个初始区域 + RegionModule 8 端点 + 前端区域管理页 |
+| v1.6.0 区域管理层支持 | feat/date-range-picker | ✅ 已合并 | 认证+6个API端点+前端全部适配 |
 | v1.5.0 员工产品反馈 | feat/product-feedback | ✅ 已合并 | PR #12 已 merge。文字/语音+图片附件提交反馈，AI分类，管理层查看/回复 |
 | v1.4.0 管理层会议功能 | feat/meeting-recording | ✅ 已合并 | PR #7 → #10 已 merge |
 | 顾客洞察按门店分组展示 | feat/meeting-recording | ✅ 已合并 | PR #11 已 merge |
