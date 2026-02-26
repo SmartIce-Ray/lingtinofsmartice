@@ -19,12 +19,13 @@ function parseMarkdown(text: string): { html: string; quickQuestions: string[] }
   if (!text) return { html: '', quickQuestions: [] };
 
   // Extract :::quick-questions block before processing
-  // Handles variations: with/without spaces, newlines, and trailing markers
+  // Very permissive regex: handles full/half-width colons, optional spaces/newlines,
+  // missing closing markers, and other format variations from AI output
   let quickQuestions: string[] = [];
-  let processedText = text.replace(/\s*[:：]{3}\s*quick-questions\s*\n([\s\S]*?)[:：]{3}\s*/gi, (_, content) => {
+  let processedText = text.replace(/\s*[:：]{3}\s*quick[-\s]?questions\s*\n?([\s\S]*?)(?:[:：]{3}|$)\s*$/gi, (_, content) => {
     quickQuestions = content
       .split('\n')
-      .map((line: string) => line.replace(/^[\-\*]\s*/, '').trim())
+      .map((line: string) => line.replace(/^[\-\*\d\.]\s*/, '').trim())
       .filter(Boolean);
     return ''; // Remove from output
   });
