@@ -265,14 +265,9 @@ export function useChatStream(): UseChatStreamReturn {
     }
 
     setMessages([]);
-    // Clear the briefing flag so it regenerates
-    if (typeof window !== 'undefined' && roleCode) {
-      const today = new Date().toISOString().slice(0, 10);
-      sessionStorage.removeItem(`lingtin_briefing_${roleCode}_${today}`);
-    }
     setError(null);
     setIsLoading(false);
-  }, [roleCode]);
+  }, []);
 
   // Stop ongoing request without clearing messages
   const stopRequest = useCallback(() => {

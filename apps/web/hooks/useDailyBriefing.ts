@@ -1,5 +1,5 @@
 // Daily Briefing Hook - Auto-trigger daily AI briefing on first visit
-// v1.0 - Checks sessionStorage to avoid re-triggering within same day
+// v1.1 - Don't set sessionStorage flag eagerly; rely on messageCount to skip
 
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,16 +24,11 @@ export function useDailyBriefing({
   useEffect(() => {
     if (!isInitialized || isLoading || hasSent.current || !user) return;
 
-    const roleCode = user.roleCode;
-    const today = new Date().toISOString().slice(0, 10);
-    const briefingKey = `lingtin_briefing_${roleCode}_${today}`;
+    // Skip if there are existing messages (briefing already completed or user has history)
+    if (messageCount > 0) return;
 
-    // Skip if already generated today or if there are existing messages
-    if (sessionStorage.getItem(briefingKey) || messageCount > 0) return;
-
-    // Mark as sent to prevent re-triggering
+    // Mark as sent in this session to prevent re-triggering on re-renders
     hasSent.current = true;
-    sessionStorage.setItem(briefingKey, '1');
 
     // Trigger briefing with hidden user message
     sendMessage('__DAILY_BRIEFING__', { hideUserMessage: true });

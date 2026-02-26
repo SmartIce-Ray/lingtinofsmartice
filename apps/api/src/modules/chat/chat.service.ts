@@ -497,14 +497,30 @@ this.logger.log(`Messages in context: ${messages.length}`);
 
     this.logger.log(`Calling OpenRouter with ${messages.length} messages`);
 
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // Timeout: 60s for regular, 90s for briefing (multiple tool calls)
+    const timeoutMs = isBriefing ? 90_000 : 60_000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: globalThis.Response;
+    try {
+      response = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('AI 响应超时，请稍后重试');
+      }
+      throw err;
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorText = await response.text();
