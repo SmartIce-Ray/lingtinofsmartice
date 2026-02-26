@@ -439,8 +439,18 @@ this.logger.log(`Messages in context: ${messages.length}`);
         }
 
         // No tool calls - this is the final response, stream it
-        const content = assistantMessage.content || '';
+        let content = assistantMessage.content || '';
         this.logger.log(`[Iteration ${iteration}] Final response length: ${content.length}`);
+
+        // Guard: detect gibberish (model hallucination) — if <15% Chinese chars, replace with friendly message
+        if (content.length > 50) {
+          const chineseChars = (content.match(/[\u4e00-\u9fff]/g) || []).length;
+          const ratio = chineseChars / content.length;
+          if (ratio < 0.15) {
+            this.logger.warn(`[Guard] Gibberish detected: ${content.length} chars, ${(ratio * 100).toFixed(1)}% Chinese. First 100: ${content.slice(0, 100)}`);
+            content = '抱歉，AI 生成内容出现异常，请点击「清空对话」重新生成。';
+          }
+        }
 
         // Stream the content in chunks for better UX
         const chunkSize = 20;
