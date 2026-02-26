@@ -19,11 +19,12 @@ function parseMarkdown(text: string): { html: string; quickQuestions: string[] }
   if (!text) return { html: '', quickQuestions: [] };
 
   // Extract :::quick-questions block before processing
+  // Handles variations: with/without spaces, newlines, and trailing markers
   let quickQuestions: string[] = [];
-  let processedText = text.replace(/:::quick-questions\n([\s\S]*?):::/g, (_, content) => {
+  let processedText = text.replace(/\s*:{3}\s*quick-questions\s*\n([\s\S]*?):{3}\s*/g, (_, content) => {
     quickQuestions = content
       .split('\n')
-      .map((line: string) => line.replace(/^-\s*/, '').trim())
+      .map((line: string) => line.replace(/^[\-\*]\s*/, '').trim())
       .filter(Boolean);
     return ''; // Remove from output
   });
