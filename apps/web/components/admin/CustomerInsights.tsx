@@ -43,6 +43,15 @@ interface FeedbackItem {
   contexts: FeedbackContext[];
 }
 
+interface ByRestaurantItem {
+  restaurant_id: string;
+  restaurant_name: string;
+  positive_count: number;
+  negative_count: number;
+  positive_feedbacks: FeedbackItem[];
+  negative_feedbacks: FeedbackItem[];
+}
+
 interface SentimentSummaryResponse {
   positive_count: number;
   negative_count: number;
@@ -50,6 +59,7 @@ interface SentimentSummaryResponse {
   total_feedbacks: number;
   positive_feedbacks: FeedbackItem[];
   negative_feedbacks: FeedbackItem[];
+  by_restaurant?: ByRestaurantItem[];
 }
 
 // --- Inline Q&A conversation renderer ---
@@ -78,7 +88,11 @@ function QAConversation({ questions, answers }: { questions: string[]; answers: 
   );
 }
 
-export function CustomerInsights() {
+interface CustomerInsightsProps {
+  date?: string;
+}
+
+export function CustomerInsights({ date }: CustomerInsightsProps) {
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -113,19 +127,78 @@ export function CustomerInsights() {
     '/api/dashboard/suggestions?restaurant_id=all&days=7'
   );
 
-  // Fetch sentiment summary (today, cross-store) for feedback hot words
-  const { data: sentimentData, isLoading: sentLoading } = useSWR<SentimentSummaryResponse>(
-    '/api/dashboard/sentiment-summary?restaurant_id=all'
-  );
+  // Fetch sentiment summary for feedback hot words
+  const sentimentUrl = date
+    ? `/api/dashboard/sentiment-summary?restaurant_id=all&date=${date}`
+    : '/api/dashboard/sentiment-summary?restaurant_id=all';
+  const { data: sentimentData, isLoading: sentLoading } = useSWR<SentimentSummaryResponse>(sentimentUrl);
 
   const suggestions = suggestionsData?.suggestions ?? [];
   const negativeFeedbacks = sentimentData?.negative_feedbacks ?? [];
   const positiveFeedbacks = sentimentData?.positive_feedbacks ?? [];
+  const byRestaurant = sentimentData?.by_restaurant ?? [];
   const isLoading = sugLoading || sentLoading;
 
   // Expand state for suggestions (by index) and feedbacks (by "neg-idx" / "pos-idx")
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const toggleExpand = (key: string) => setExpandedKey(prev => prev === key ? null : key);
+
+  const renderFeedbackRow = (fb: FeedbackItem, type: 'neg' | 'pos', keyPrefix: string, idx: number) => {
+    const fbKey = `${keyPrefix}-${type}-${idx}`;
+    const isExp = expandedKey === fbKey;
+    const hasCtx = fb.contexts && fb.contexts.length > 0;
+    const dotColor = type === 'neg' ? 'bg-amber-400' : 'bg-green-400';
+    return (
+      <div key={idx} className={`transition-colors ${isExp ? 'bg-gray-50' : ''}`}>
+        <div
+          className={`flex items-center gap-2.5 px-4 py-2.5 ${hasCtx ? 'cursor-pointer active:bg-gray-50' : ''}`}
+          onClick={() => hasCtx && toggleExpand(fbKey)}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
+          <span className="text-sm text-gray-800 flex-1 leading-relaxed">&ldquo;{fb.text}&rdquo;</span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-xs text-gray-300">{fb.count} 桌</span>
+            {hasCtx && (
+              <svg className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExp ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            )}
+          </div>
+        </div>
+        {isExp && hasCtx && (
+          <div className="px-4 pb-3 space-y-2">
+            {fb.contexts.slice(0, 3).map((ctx, ci) => {
+              const audioKey = `${keyPrefix}-${type}-${idx}-${ci}`;
+              return (
+                <div key={ci} className="bg-white rounded-xl p-3 border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{ctx.tableId}桌</span>
+                    {ctx.audioUrl && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAudioToggle(audioKey, ctx.audioUrl!); }}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                          playingKey === audioKey ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
+                        }`}
+                      >
+                        {playingKey === audioKey ? (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className="border-l-2 border-primary-200 pl-3">
+                    <QAConversation questions={ctx.managerQuestions || []} answers={ctx.customerAnswers || []} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -232,14 +305,54 @@ export function CustomerInsights() {
         </div>
       )}
 
-      {/* Feedback Hot Words */}
-      {(negativeFeedbacks.length > 0 || positiveFeedbacks.length > 0) && (
+      {/* Feedback by Restaurant */}
+      {byRestaurant.length > 0 && (
+        <div className="space-y-3">
+          {byRestaurant.map((rest) => {
+            const hasNeg = rest.negative_feedbacks.length > 0;
+            const hasPos = rest.positive_feedbacks.length > 0;
+            if (!hasNeg && !hasPos) return null;
+            const keyPrefix = `r-${rest.restaurant_id}`;
+            return (
+              <div key={rest.restaurant_id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-gray-900">{rest.restaurant_name}</span>
+                  <div className="flex items-center gap-2">
+                    {rest.negative_count > 0 && (
+                      <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{rest.negative_count} 差</span>
+                    )}
+                    {rest.positive_count > 0 && (
+                      <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">{rest.positive_count} 好</span>
+                    )}
+                  </div>
+                </div>
+                {hasNeg && (
+                  <div>
+                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">差评</span></div>
+                    {rest.negative_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'neg', keyPrefix, idx))}
+                  </div>
+                )}
+                {hasNeg && hasPos && <div className="mx-4 border-t border-gray-100" />}
+                {hasPos && (
+                  <div>
+                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">好评</span></div>
+                    {rest.positive_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'pos', keyPrefix, idx))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Feedback Hot Words - flat view fallback */}
+      {byRestaurant.length === 0 && (negativeFeedbacks.length > 0 || positiveFeedbacks.length > 0) && (
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           {/* Negative */}
           {negativeFeedbacks.length > 0 && (
             <div>
               <div className="px-4 pt-4 pb-2">
-                <span className="text-sm font-semibold text-gray-900">高频差评 · 今日</span>
+                <span className="text-sm font-semibold text-gray-900">高频差评</span>
               </div>
               {negativeFeedbacks.slice(0, 6).map((fb, idx) => {
                 const fbKey = `neg-${idx}`;
@@ -313,7 +426,7 @@ export function CustomerInsights() {
           {positiveFeedbacks.length > 0 && (
             <div>
               <div className="px-4 pt-4 pb-2">
-                <span className="text-sm font-semibold text-gray-900">高频好评 · 今日</span>
+                <span className="text-sm font-semibold text-gray-900">高频好评</span>
               </div>
               {positiveFeedbacks.slice(0, 6).map((fb, idx) => {
                 const fbKey = `pos-${idx}`;
@@ -381,7 +494,7 @@ export function CustomerInsights() {
       )}
 
       {/* Empty state */}
-      {!isLoading && suggestions.length === 0 && negativeFeedbacks.length === 0 && positiveFeedbacks.length === 0 && (
+      {!isLoading && suggestions.length === 0 && byRestaurant.length === 0 && negativeFeedbacks.length === 0 && positiveFeedbacks.length === 0 && (
         <div className="bg-white rounded-xl p-8 text-center">
           <div className="text-4xl mb-3">💡</div>
           <h3 className="text-base font-medium text-gray-700 mb-1">暂无顾客洞察</h3>
