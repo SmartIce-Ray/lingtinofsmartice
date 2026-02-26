@@ -27,6 +27,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       employeeName: payload.employeeName,
       restaurantId: payload.restaurantId,
       roleCode: payload.roleCode,
+      managedRestaurantIds: payload.managedRestaurantIds || null,
+      managedRegionIds: payload.managedRegionIds || null,
+      isSuperAdmin: payload.isSuperAdmin === true,
     };
   }
 }

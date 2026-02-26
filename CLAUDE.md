@@ -129,6 +129,21 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 - **回复保持简洁** — 给出关键信息即可，不要重复粘贴大段代码
 - **用 /compact 保留重点** — 上下文接近上限时，使用 `/compact` 并指定保留重点
 - **阶段性保存进度** — 见全局规则。compact、结束 session、或完成阶段任务时，将关键发现写入本文件末尾"进行中工作"区块
+- **每个版本完成后立即提交** — 不要在一个 session 里攒多个版本，每完成一个版本就执行完整的 Branch→PR→Review→Merge 流程
+- **提交前主动 compact** — 在 git 操作前执行 `/compact focus on: files modified, build status, git state`，确保提交流程有足够上下文空间
+
+## Compact Instructions
+
+When compacting, always preserve:
+- Current branch name and all modified/untracked files
+- Recent build and test results (pass/fail)
+- Outstanding tasks and next steps from "进行中工作"
+- Git workflow state (commit done? PR created? review done?)
+
+May discard:
+- Old file exploration outputs and verbose command results
+- Historical context from earlier features in the same session
+- Large git diff outputs (use `--stat` summary instead)
 
 ## 协作工作流
 
