@@ -646,9 +646,12 @@ this.logger.log(`Executing tool: ${name}`);
    */
   private async runRawQuery(sql: string): Promise<any[]> {
     const client = this.supabase.getClient();
+    // Must trim: template literal SQL has leading \n that PostgreSQL TRIM() doesn't remove,
+    // causing the RPC's "LIKE 'select%'" check to fail
+    const trimmedSql = sql.replace(/\s+/g, ' ').trim();
     try {
       const { data, error } = await client.rpc('execute_readonly_query', {
-        query_text: sql,
+        query_text: trimmedSql,
       });
       if (error) {
         this.logger.warn(`[runRawQuery] RPC failed: ${error.message}`);
