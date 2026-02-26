@@ -19,6 +19,7 @@ export class ChatController {
     @Body('role_code') roleCode: string | undefined,
     @Body('user_name') userName: string | undefined,
     @Body('employee_id') employeeId: string | undefined,
+    @Body('managed_restaurant_ids') managedRestaurantIds: string[] | null | undefined,
     @Res() res: Response,
   ) {
     console.log('[ChatController] POST /api/chat/message');
@@ -26,6 +27,7 @@ export class ChatController {
     console.log('[ChatController] restaurantId:', restaurantId);
     console.log('[ChatController] roleCode:', roleCode);
     console.log('[ChatController] userName:', userName);
+    console.log('[ChatController] managedRestaurantIds:', managedRestaurantIds?.length ?? 'all');
     console.log('[ChatController] history length:', history?.length || 0);
 
     // Set headers for SSE streaming
@@ -43,6 +45,7 @@ export class ChatController {
       userName,
       employeeId,
       res,
+      managedRestaurantIds || null,
     );
     console.log('[ChatController] streamResponse completed');
   }

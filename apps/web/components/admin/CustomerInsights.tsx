@@ -90,9 +90,10 @@ function QAConversation({ questions, answers }: { questions: string[]; answers: 
 
 interface CustomerInsightsProps {
   date?: string;
+  managedIdsParam?: string;
 }
 
-export function CustomerInsights({ date }: CustomerInsightsProps) {
+export function CustomerInsights({ date, managedIdsParam = '' }: CustomerInsightsProps) {
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -122,15 +123,15 @@ export function CustomerInsights({ date }: CustomerInsightsProps) {
     [playingKey, stopAudio],
   );
 
-  // Fetch customer suggestions (7-day rolling, cross-store)
+  // Fetch customer suggestions (7-day rolling, scoped by managed restaurants)
   const { data: suggestionsData, isLoading: sugLoading } = useSWR<SuggestionsResponse>(
-    '/api/dashboard/suggestions?restaurant_id=all&days=7'
+    `/api/dashboard/suggestions?restaurant_id=all&days=7${managedIdsParam}`
   );
 
   // Fetch sentiment summary for feedback hot words
   const sentimentUrl = date
-    ? `/api/dashboard/sentiment-summary?restaurant_id=all&date=${date}`
-    : '/api/dashboard/sentiment-summary?restaurant_id=all';
+    ? `/api/dashboard/sentiment-summary?restaurant_id=all&date=${date}${managedIdsParam}`
+    : `/api/dashboard/sentiment-summary?restaurant_id=all${managedIdsParam}`;
   const { data: sentimentData, isLoading: sentLoading } = useSWR<SentimentSummaryResponse>(sentimentUrl);
 
   const suggestions = suggestionsData?.suggestions ?? [];

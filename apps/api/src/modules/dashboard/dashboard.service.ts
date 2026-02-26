@@ -53,27 +53,44 @@ export class DashboardService {
 
   constructor(private readonly supabase: SupabaseService) {}
 
-  // Get all active restaurants (for administrator multi-store view)
-  async getRestaurantList() {
-    if (this.supabase.isMockMode()) {
-      return { restaurants: [{ id: 'mock-rest-1', restaurant_name: '测试店铺' }] };
-    }
-    const client = this.supabase.getClient();
+  // Parse managed_ids query param: "uuid1,uuid2" → string[] | null
+  static parseManagedIds(managedIdsStr?: string): string[] | null {
+    if (!managedIdsStr) return null;
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const ids = managedIdsStr.split(',').filter(id => UUID_REGEX.test(id.trim()));
+    return ids.length > 0 ? ids : null;
+  }
 
-    const { data, error } = await client
+  // Get visible restaurants: scoped by managedIds or all active
+  private async getVisibleRestaurants(managedIds: string[] | null): Promise<{ id: string; restaurant_name: string }[]> {
+    const client = this.supabase.getClient();
+    let query = client
       .from('master_restaurant')
       .select('id, restaurant_name')
       .eq('is_active', true)
       .order('restaurant_name');
 
-    if (error) throw error;
+    if (managedIds) {
+      query = query.in('id', managedIds);
+    }
 
-    return { restaurants: data || [] };
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Get all active restaurants (for administrator multi-store view)
+  async getRestaurantList(managedIds: string[] | null = null) {
+    if (this.supabase.isMockMode()) {
+      return { restaurants: [{ id: 'mock-rest-1', restaurant_name: '测试店铺' }] };
+    }
+    const restaurants = await this.getVisibleRestaurants(managedIds);
+    return { restaurants };
   }
 
   // Get coverage statistics (visits vs table sessions)
   // Supports restaurant_id=all for multi-store summary
-  async getCoverageStats(restaurantId: string, date: string) {
+  async getCoverageStats(restaurantId: string, date: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         periods: [
@@ -87,7 +104,7 @@ export class DashboardService {
 
     // Multi-restaurant mode: return per-restaurant breakdown with summary
     if (restaurantId === 'all') {
-      return this.getMultiRestaurantCoverage(date);
+      return this.getMultiRestaurantCoverage(date, managedIds);
     }
 
     // Single restaurant mode (original logic)
@@ -131,17 +148,11 @@ export class DashboardService {
   }
 
   // Get coverage stats for all restaurants (admin multi-store view)
-  private async getMultiRestaurantCoverage(date: string) {
+  private async getMultiRestaurantCoverage(date: string, managedIds: string[] | null = null) {
     const client = this.supabase.getClient();
 
-    // Get all active restaurants
-    const { data: restaurants, error: restError } = await client
-      .from('master_restaurant')
-      .select('id, restaurant_name')
-      .eq('is_active', true)
-      .order('restaurant_name');
-
-    if (restError) throw restError;
+    // Get visible restaurants (scoped or all)
+    const restaurants = await this.getVisibleRestaurants(managedIds);
 
     // Get all sessions for the date
     const { data: allSessions, error: sessionsError } = await client
@@ -341,7 +352,7 @@ export class DashboardService {
   // Get sentiment distribution summary for a date with feedback phrases
   // v1.7 - Added: Include conversation context for each feedback (for popover display)
   // v1.9 - Added: Support restaurant_id=all for multi-store aggregation
-  async getSentimentSummary(restaurantId: string, date: string) {
+  async getSentimentSummary(restaurantId: string, date: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         positive_count: 12, neutral_count: 5, negative_count: 3,
@@ -402,9 +413,11 @@ export class DashboardService {
       .eq('visit_date', date)
       .eq('status', 'processed');
 
-    // Only filter by restaurant_id if not 'all'
+    // Filter by restaurant scope
     if (restaurantId !== 'all') {
       query = query.eq('restaurant_id', restaurantId);
+    } else if (managedIds) {
+      query = query.in('restaurant_id', managedIds);
     }
 
     const { data, error } = await query;
@@ -484,11 +497,8 @@ export class DashboardService {
     }[] | undefined;
 
     if (restaurantId === 'all') {
-      const { data: restaurants } = await client
-        .from('master_restaurant')
-        .select('id, restaurant_name')
-        .eq('is_active', true);
-      const restNameMap = new Map((restaurants || []).map(r => [r.id, r.restaurant_name]));
+      const restaurants = await this.getVisibleRestaurants(managedIds);
+      const restNameMap = new Map(restaurants.map(r => [r.id, r.restaurant_name]));
 
       const restBuckets = new Map<string, { positive: FeedbackWithContext[]; negative: FeedbackWithContext[] }>();
       for (const fb of positiveFeedbacks) {
@@ -530,7 +540,7 @@ export class DashboardService {
 
   // Get all restaurants overview with sentiment scores and keywords (for admin dashboard)
   // Returns: restaurant list with visit count, avg sentiment, coverage, recent keywords
-  async getRestaurantsOverview(date: string) {
+  async getRestaurantsOverview(date: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         summary: { total_visits: 28, avg_sentiment: 0.72, restaurant_count: 3 },
@@ -544,30 +554,27 @@ export class DashboardService {
     }
     const client = this.supabase.getClient();
 
-    // Get all active restaurants
-    const { data: restaurants, error: restError } = await client
-      .from('master_restaurant')
-      .select('id, restaurant_name')
-      .eq('is_active', true)
-      .order('restaurant_name');
+    // Get visible restaurants (scoped or all)
+    const restaurants = await this.getVisibleRestaurants(managedIds);
+    const restIds = restaurants.map(r => r.id);
 
-    if (restError) throw restError;
-
-    // Get all visits for the date with sentiment and keywords
-    const { data: allVisits, error: visitsError } = await client
+    // Get visits for the date with sentiment and keywords (scoped)
+    let visitsQuery = client
       .from('lingtin_visit_records')
       .select('restaurant_id, visit_period, sentiment_score, keywords')
       .eq('visit_date', date)
       .eq('status', 'processed');
-
+    if (managedIds) visitsQuery = visitsQuery.in('restaurant_id', restIds);
+    const { data: allVisits, error: visitsError } = await visitsQuery;
     if (visitsError) throw visitsError;
 
-    // Get all table sessions for coverage calculation
-    const { data: allSessions, error: sessionsError } = await client
+    // Get table sessions for coverage calculation (scoped)
+    let sessionsQuery = client
       .from('lingtin_table_sessions')
       .select('restaurant_id, period')
       .eq('session_date', date);
-
+    if (managedIds) sessionsQuery = sessionsQuery.in('restaurant_id', restIds);
+    const { data: allSessions, error: sessionsError } = await sessionsQuery;
     if (sessionsError) throw sessionsError;
 
     // Calculate per-restaurant stats
@@ -740,7 +747,7 @@ export class DashboardService {
   }
 
   // Get daily briefing for admin: cross-restaurant anomaly detection + problem cards
-  async getBriefing(date: string) {
+  async getBriefing(date: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         date,
@@ -788,39 +795,46 @@ export class DashboardService {
 
     const client = this.supabase.getClient();
 
-    // 1. Get all active restaurants
-    const { data: restaurants, error: restError } = await client
-      .from('master_restaurant')
-      .select('id, restaurant_name')
-      .eq('is_active', true);
-    if (restError) throw restError;
-    if (!restaurants || restaurants.length === 0) {
-      return { date, greeting: this.getGreeting(), problems: [], healthy_count: 0, avg_sentiment: null, avg_coverage: 0 };
+    // 1. Get visible restaurants (scoped or all)
+    const restaurants = await this.getVisibleRestaurants(managedIds);
+    if (restaurants.length === 0) {
+      return { date, greeting: this.getGreeting(), problems: [], healthy_count: 0, restaurant_count: 0, avg_sentiment: null, avg_coverage: 0 };
     }
 
     const restMap = new Map(restaurants.map(r => [r.id, r.restaurant_name]));
+    const restIds = restaurants.map(r => r.id);
 
     // 2. Fetch visit records, action items, table sessions, and yesterday's data in parallel
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = toChinaDateString(yesterday);
 
+    // Build scoped queries
+    let visitsQ = client.from('lingtin_visit_records')
+      .select('id, restaurant_id, table_id, feedbacks, sentiment_score, audio_url, keywords, status, manager_questions, customer_answers')
+      .eq('visit_date', date)
+      .eq('status', 'processed');
+    let actionsQ = client.from('lingtin_action_items')
+      .select('id, restaurant_id, category, suggestion_text, priority, status, created_at')
+      .in('status', ['pending', 'acknowledged'])
+      .eq('priority', 'high');
+    let sessionsQ = client.from('lingtin_table_sessions')
+      .select('restaurant_id, period')
+      .eq('session_date', date);
+    let yesterdayQ = client.from('lingtin_visit_records')
+      .select('restaurant_id, sentiment_score')
+      .eq('visit_date', yesterdayStr)
+      .eq('status', 'processed');
+
+    if (managedIds) {
+      visitsQ = visitsQ.in('restaurant_id', restIds);
+      actionsQ = actionsQ.in('restaurant_id', restIds);
+      sessionsQ = sessionsQ.in('restaurant_id', restIds);
+      yesterdayQ = yesterdayQ.in('restaurant_id', restIds);
+    }
+
     const [visitsRes, actionsRes, sessionsRes, yesterdayVisitsRes] = await Promise.all([
-      client.from('lingtin_visit_records')
-        .select('id, restaurant_id, table_id, feedbacks, sentiment_score, audio_url, keywords, status, manager_questions, customer_answers')
-        .eq('visit_date', date)
-        .eq('status', 'processed'),
-      client.from('lingtin_action_items')
-        .select('id, restaurant_id, category, suggestion_text, priority, status, created_at')
-        .in('status', ['pending', 'acknowledged'])
-        .eq('priority', 'high'),
-      client.from('lingtin_table_sessions')
-        .select('restaurant_id, period')
-        .eq('session_date', date),
-      client.from('lingtin_visit_records')
-        .select('restaurant_id, sentiment_score')
-        .eq('visit_date', yesterdayStr)
-        .eq('status', 'processed'),
+      visitsQ, actionsQ, sessionsQ, yesterdayQ,
     ]);
 
     const visits = visitsRes.data || [];
@@ -1014,7 +1028,7 @@ export class DashboardService {
 
   // Get customer suggestions aggregated from feedbacks with sentiment==='suggestion'
   // Supports restaurant_id=all (cross-restaurant) or single restaurant UUID
-  async getSuggestions(restaurantId: string, days: number) {
+  async getSuggestions(restaurantId: string, days: number, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         suggestions: [
@@ -1065,6 +1079,8 @@ export class DashboardService {
 
     if (restaurantId !== 'all') {
       query = query.eq('restaurant_id', restaurantId);
+    } else if (managedIds) {
+      query = query.in('restaurant_id', managedIds);
     }
 
     const { data, error } = await query;
@@ -1073,11 +1089,8 @@ export class DashboardService {
     // Build restaurant name lookup if cross-restaurant
     let restMap = new Map<string, string>();
     if (restaurantId === 'all') {
-      const { data: restaurants } = await client
-        .from('master_restaurant')
-        .select('id, restaurant_name')
-        .eq('is_active', true);
-      restMap = new Map((restaurants || []).map(r => [r.id, r.restaurant_name]));
+      const restaurants = await this.getVisibleRestaurants(managedIds);
+      restMap = new Map(restaurants.map(r => [r.id, r.restaurant_name]));
     }
 
     // Collect all suggestion feedbacks
@@ -1163,6 +1176,197 @@ export class DashboardService {
       total_visits: visitsResult.count ?? 0,
       positive_count: positiveResult.count ?? 0,
       resolved_issues: resolvedResult.count ?? 0,
+    };
+  }
+
+  // Benchmark: compare managed region vs company-wide, detect signals, surface highlights
+  async getBenchmark(managedIds: string[], days: number) {
+    const client = this.supabase.getClient();
+
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+    const startStr = toChinaDateString(startDate);
+    const endStr = toChinaDateString(endDate);
+
+    // Fetch all active restaurants and the managed subset
+    const { data: allRestaurants } = await client
+      .from('master_restaurant')
+      .select('id, restaurant_name')
+      .eq('is_active', true);
+    const allRest = allRestaurants || [];
+    const managedRest = allRest.filter(r => managedIds.includes(r.id));
+    const restNameMap = new Map(allRest.map(r => [r.id, r.restaurant_name]));
+
+    // Fetch data in parallel: visits, sessions, action items for the period
+    const [allVisitsRes, allSessionsRes, allActionsRes] = await Promise.all([
+      client.from('lingtin_visit_records')
+        .select('restaurant_id, visit_date, sentiment_score')
+        .gte('visit_date', startStr)
+        .lte('visit_date', endStr)
+        .eq('status', 'processed'),
+      client.from('lingtin_table_sessions')
+        .select('restaurant_id, session_date')
+        .gte('session_date', startStr)
+        .lte('session_date', endStr),
+      client.from('lingtin_action_items')
+        .select('id, restaurant_id, status, priority, created_at')
+        .in('status', ['pending', 'acknowledged', 'resolved']),
+    ]);
+
+    const allVisits = allVisitsRes.data || [];
+    const allSessions = allSessionsRes.data || [];
+    const allActions = allActionsRes.data || [];
+
+    // --- Comparison: my region vs company ---
+    const calcMetrics = (restIds: string[]) => {
+      const visits = allVisits.filter(v => restIds.includes(v.restaurant_id));
+      const sessions = allSessions.filter(s => restIds.includes(s.restaurant_id));
+      const actions = allActions.filter(a => restIds.includes(a.restaurant_id));
+
+      const scores = visits.filter(v => v.sentiment_score !== null).map(v => v.sentiment_score);
+      const avgSentiment = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      const coverage = sessions.length > 0 ? Math.round((visits.length / sessions.length) * 100) : 0;
+      const total = actions.length;
+      const resolved = actions.filter(a => a.status === 'resolved').length;
+      const completionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
+
+      return { sentiment: Math.round(avgSentiment * 100) / 100, coverage, actionCompletionRate: completionRate };
+    };
+
+    const myIds = managedIds;
+    const companyIds = allRest.map(r => r.id);
+    const mine = calcMetrics(myIds);
+    const company = calcMetrics(companyIds);
+
+    // --- Smart Signals ---
+    type AlertType = 'execution_gap' | 'trend_decline' | 'unresolved_issue';
+    type AlertSeverity = 'high' | 'medium';
+    const alerts: { type: AlertType; severity: AlertSeverity; storeName: string; storeId: string; message: string }[] = [];
+
+    for (const rest of managedRest) {
+      const restVisits = allVisits.filter(v => v.restaurant_id === rest.id);
+
+      // Execution gap: consecutive days without visits
+      const visitDates = new Set(restVisits.map(v => v.visit_date));
+      let consecutiveNoVisit = 0;
+      for (let d = new Date(endDate); d >= startDate; d.setDate(d.getDate() - 1)) {
+        const dateStr = toChinaDateString(d);
+        if (!visitDates.has(dateStr)) {
+          consecutiveNoVisit++;
+        } else {
+          break;
+        }
+      }
+      if (consecutiveNoVisit >= 2) {
+        alerts.push({
+          type: 'execution_gap',
+          severity: 'high',
+          storeName: rest.restaurant_name,
+          storeId: rest.id,
+          message: `连续 ${consecutiveNoVisit} 天未进行桌访`,
+        });
+      }
+
+      // Overdue high-priority actions
+      const restOverdue = allActions.filter(a => {
+        if (a.restaurant_id !== rest.id || a.priority !== 'high') return false;
+        if (a.status === 'resolved') return false;
+        const created = new Date(a.created_at);
+        const daysDiff = Math.floor((Date.now() - created.getTime()) / (1000 * 60 * 60 * 24));
+        return daysDiff > 3;
+      });
+      if (restOverdue.length > 0) {
+        alerts.push({
+          type: 'execution_gap',
+          severity: 'high',
+          storeName: rest.restaurant_name,
+          storeId: rest.id,
+          message: `${restOverdue.length} 条高优待办超 3 天未处理`,
+        });
+      }
+
+      // Trend decline: sentiment dropping 3 consecutive days
+      const dateScores = new Map<string, number[]>();
+      restVisits.forEach(v => {
+        if (v.sentiment_score !== null) {
+          const scores = dateScores.get(v.visit_date) || [];
+          scores.push(v.sentiment_score);
+          dateScores.set(v.visit_date, scores);
+        }
+      });
+      const sortedDates = Array.from(dateScores.keys()).sort().slice(-4);
+      if (sortedDates.length >= 3) {
+        const avgs = sortedDates.map(d => {
+          const s = dateScores.get(d)!;
+          return s.reduce((a, b) => a + b, 0) / s.length;
+        });
+        const lastThree = avgs.slice(-3);
+        if (lastThree.length === 3 && lastThree[0] > lastThree[1] && lastThree[1] > lastThree[2]) {
+          alerts.push({
+            type: 'trend_decline',
+            severity: 'high',
+            storeName: rest.restaurant_name,
+            storeId: rest.id,
+            message: `情绪分连续 3 天下降（${lastThree.map(v => (v * 100).toFixed(0)).join(' → ')}）`,
+          });
+        }
+      }
+    }
+
+    // --- Highlights: best performers across all company stores ---
+    type HighlightType = 'sentiment_leader' | 'improvement_fastest' | 'completion_best';
+    const highlights: { type: HighlightType; storeName: string; storeId: string; metricValue: number; description: string; isMyStore: boolean }[] = [];
+
+    // Sentiment leaders
+    const storeMetrics = allRest.map(r => {
+      const visits = allVisits.filter(v => v.restaurant_id === r.id);
+      const scores = visits.filter(v => v.sentiment_score !== null).map(v => v.sentiment_score);
+      const avg = scores.length >= 3 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+      const actions = allActions.filter(a => a.restaurant_id === r.id);
+      const total = actions.length;
+      const resolved = actions.filter(a => a.status === 'resolved').length;
+      const completionRate = total >= 3 ? Math.round((resolved / total) * 100) : null;
+
+      return { id: r.id, name: r.restaurant_name, avgSentiment: avg, completionRate, visitCount: visits.length };
+    });
+
+    // Best sentiment
+    const sortedBySentiment = storeMetrics.filter(s => s.avgSentiment !== null).sort((a, b) => b.avgSentiment! - a.avgSentiment!);
+    sortedBySentiment.slice(0, 3).forEach((s, idx) => {
+      highlights.push({
+        type: 'sentiment_leader',
+        storeName: s.name,
+        storeId: s.id,
+        metricValue: Math.round(s.avgSentiment! * 100),
+        description: idx === 0 ? '情绪分最高' : `情绪分 TOP ${idx + 1}`,
+        isMyStore: managedIds.includes(s.id),
+      });
+    });
+
+    // Best completion rate
+    const sortedByCompletion = storeMetrics.filter(s => s.completionRate !== null).sort((a, b) => b.completionRate! - a.completionRate!);
+    if (sortedByCompletion.length > 0 && sortedByCompletion[0].completionRate! > 0) {
+      highlights.push({
+        type: 'completion_best',
+        storeName: sortedByCompletion[0].name,
+        storeId: sortedByCompletion[0].id,
+        metricValue: sortedByCompletion[0].completionRate!,
+        description: '待办完成率最高',
+        isMyStore: managedIds.includes(sortedByCompletion[0].id),
+      });
+    }
+
+    return {
+      period: { start: startStr, end: endStr },
+      comparison: {
+        sentiment: { mine: mine.sentiment, company: company.sentiment },
+        coverage: { mine: mine.coverage, company: company.coverage },
+        actionCompletionRate: { mine: mine.actionCompletionRate, company: company.actionCompletionRate },
+      },
+      alerts,
+      highlights,
     };
   }
 }

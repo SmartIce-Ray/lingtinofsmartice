@@ -156,6 +156,7 @@ export function useChatStream(): UseChatStreamReturn {
           role_code: roleCode,
           user_name: userName,
           employee_id: employeeId,
+          managed_restaurant_ids: user?.managedRestaurantIds || null,
         }),
         signal: abortControllerRef.current.signal,
       });

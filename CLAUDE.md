@@ -64,7 +64,8 @@ supabase start        # 启动本地 Supabase (localhost:54321)
 - **API 响应**：统一 `{ data, message }` 格式
 - **认证 header**: 使用 `@/contexts/AuthContext` 导出的 `getAuthHeaders()`，不要在页面中重复定义
 - **Supabase UUID 查询**：所有 service 方法中 `restaurant_id` 参数必须做 UUID 校验，非法值回退 `DEFAULT_RESTAURANT_ID`
-- **角色路由模式** — `master_employee.role_code` 是自由文本字段，新增角色需改 3 处：`AuthContext.tsx` login 路由、`app/page.tsx` 首页重定向、新建 `app/<role>/layout.tsx` + `<Role>BottomNav`。当前角色：`administrator`→`/admin/`、`manager`→`/recorder`、`head_chef`→`/chef/`。API 端点无角色守卫，全靠 `restaurant_id` 隔离数据
+- **角色路由模式** — `master_employee.role_code` 是自由文本字段，新增角色需改 3 处：`AuthContext.tsx` login 路由、`app/page.tsx` 首页重定向、新建 `app/<role>/layout.tsx` + `<Role>BottomNav`。当前角色：`administrator`→`/admin/`、`manager`→`/recorder`、`head_chef`→`/chef/`。API 端点无角色守卫，靠 `restaurant_id` + `managed_restaurant_ids` 隔离数据
+- **区域管理层数据隔离** — `master_employee.managed_restaurant_ids UUID[]`：有值=区域管理层（只看这些门店）、NULL=总部管理层（看所有）。前端用 `useManagedScope()` hook，API 端点通过 `managed_ids` query param 过滤
 - **产品使用指南同步更新** — 每次功能迭代后，同步更新 `docs/user-guides/` 对应角色的指南，记录功能变更与最佳实践。**按角色分文件**（`store-manager.md`、`management.md`、`staff.md`），**每个角色一份完整文件，不再拆分成子目录或多个小文件**
 - **综合产品指南同步更新** — 每次功能迭代后，同步更新 `docs/PRODUCT-GUIDE.md`（综合使用指南 + 面向用户的版本更新记录）。新增角色时需在该文档中增加对应的使用指南章节
 - **产品指南更新触发规则** — 当用户说"更新产品指南使用说明"时，对比 `docs/PRODUCT-GUIDE.md` 头部版本号与 `CHANGELOG.md` 最新版本号，从上次更新的版本开始，将所有后续迭代的功能变更同步到 PRODUCT-GUIDE.md + `docs/user-guides/` 对应角色文件 + README.md 版本号
@@ -162,15 +163,17 @@ IMPORTANT: 遵守以下规则防止上下文过长导致指令丢失：
 
 ## 数据库概览
 
-核心表：`lingtin_visit_records`、`lingtin_dish_mentions`（废弃，数据已由 feedbacks JSONB 替代）、`lingtin_table_sessions`、`lingtin_action_items`、`lingtin_meeting_records`、`lingtin_question_templates`
-只读引用：`master_restaurant`、`master_employee`、`mt_dish_sales`
+核心表：`lingtin_visit_records`、`lingtin_dish_mentions`（废弃，数据已由 feedbacks JSONB 替代）、`lingtin_table_sessions`、`lingtin_action_items`、`lingtin_meeting_records`、`lingtin_question_templates`、`lingtin_product_feedback`
+只读引用：`master_restaurant`、`master_employee`、`master_region`、`mt_dish_sales`
 视图：`lingtin_dishname_view`
 
 ```
+master_region (1)     ──< master_restaurant (N)
 master_restaurant (1) ──< visit_records (N) ──< dish_mentions (N)
                       ──< action_items (N)
                       ──< table_sessions (N)
 master_employee (1)   ──< visit_records (N)
+                      ──> master_region (M:N via managed_region_ids[])
 ```
 
 > 完整 schema 详见 @docs/DATABASE.md
@@ -196,7 +199,10 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
+| v1.7.0 门店区域分组 | feat/product-feedback | 开发完成，待用户本地测试 | DB migration 已执行。master_region 表 + 4 个初始区域 + 认证层 region 解析 + RegionModule 8 端点 + 前端区域管理页 |
+| v1.6.0 区域管理层支持 | feat/product-feedback | 开发完成，待提交 | DB migration 已执行。认证+6个API端点+前端全部适配 |
+| v1.5.0 员工产品反馈 | feat/product-feedback | ✅ 已合并 | PR #12 已 merge。文字/语音+图片附件提交反馈，AI分类，管理层查看/回复 |
 | v1.4.0 管理层会议功能 | feat/meeting-recording | ✅ 已合并 | PR #7 → #10 已 merge |
-| 顾客洞察按门店分组展示 | feat/meeting-recording | ✅ 已合并 | PR #11 已 merge。含门店下拉选择器+日期范围选择器+后端分组查询 |
+| 顾客洞察按门店分组展示 | feat/meeting-recording | ✅ 已合并 | PR #11 已 merge |
 | 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 无效。线上 Zeabur 有正确 key 所以生产正常 |
 | 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API，本地后端因 service key 无效运行在 MOCK MODE |

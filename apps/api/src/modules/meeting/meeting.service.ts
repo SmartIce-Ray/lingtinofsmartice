@@ -81,7 +81,7 @@ export class MeetingService {
     };
   }
 
-  async getAdminOverview(date?: string, employeeId?: string) {
+  async getAdminOverview(date?: string, employeeId?: string, managedIds?: string[] | null) {
     const client = this.supabase.getClient();
     // Default to yesterday
     const targetDate = date || (() => {
@@ -90,23 +90,32 @@ export class MeetingService {
       return d.toISOString().split('T')[0];
     })();
 
-    // 1. Get all active restaurants
-    const { data: restaurants, error: restErr } = await client
+    // 1. Get visible restaurants (scoped or all)
+    let restQuery = client
       .from('master_restaurant')
       .select('id, restaurant_name')
       .order('restaurant_name');
+    if (managedIds && managedIds.length > 0) {
+      restQuery = restQuery.in('id', managedIds);
+    }
+    const { data: restaurants, error: restErr } = await restQuery;
 
     if (restErr) {
       this.logger.error(`Failed to fetch restaurants: ${restErr.message}`);
       throw restErr;
     }
 
-    // 2. Get all meetings for the target date (cross-store)
-    const { data: meetings, error: meetErr } = await client
+    // 2. Get meetings for the target date (scoped to visible restaurants)
+    const restIds = (restaurants || []).map(r => r.id);
+    let meetQuery = client
       .from('lingtin_meeting_records')
       .select('id, restaurant_id, employee_id, meeting_type, status, ai_summary, action_items, key_decisions, audio_url, duration_seconds, created_at')
       .eq('meeting_date', targetDate)
       .order('created_at', { ascending: false });
+    if (managedIds && managedIds.length > 0) {
+      meetQuery = meetQuery.in('restaurant_id', restIds);
+    }
+    const { data: meetings, error: meetErr } = await meetQuery;
 
     if (meetErr) {
       this.logger.error(`Failed to fetch meetings: ${meetErr.message}`);

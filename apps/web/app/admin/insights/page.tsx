@@ -5,6 +5,8 @@
 
 import { useState } from 'react';
 import { UserMenu } from '@/components/layout/UserMenu';
+import { useAuth } from '@/contexts/AuthContext';
+import { useManagedScope } from '@/hooks/useManagedScope';
 import { CustomerInsights } from '@/components/admin/CustomerInsights';
 import { ProductInsights } from '@/components/admin/ProductInsights';
 import { FeedbackManagement } from '@/components/admin/FeedbackManagement';
@@ -13,6 +15,9 @@ import { getChinaYesterday, shiftDate, formatDateDisplay } from '@/lib/date-util
 type InsightTab = 'customer' | 'product' | 'feedback';
 
 export default function InsightsPage() {
+  const { user } = useAuth();
+  const { managedIdsParam } = useManagedScope();
+  const isSuperAdmin = user?.isSuperAdmin === true;
   const [activeTab, setActiveTab] = useState<InsightTab>('customer');
   const [selectedDate, setSelectedDate] = useState(getChinaYesterday);
   const maxDate = getChinaYesterday();
@@ -62,16 +67,18 @@ export default function InsightsPage() {
           >
             顾客
           </button>
-          <button
-            onClick={() => setActiveTab('product')}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeTab === 'product'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            产品
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('product')}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'product'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              产品
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('feedback')}
             className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -87,7 +94,7 @@ export default function InsightsPage() {
 
       {/* Content */}
       <div className="px-4 py-3">
-        {activeTab === 'customer' && <CustomerInsights date={selectedDate} />}
+        {activeTab === 'customer' && <CustomerInsights date={selectedDate} managedIdsParam={managedIdsParam} />}
         {activeTab === 'product' && <ProductInsights />}
         {activeTab === 'feedback' && <FeedbackManagement />}
       </div>

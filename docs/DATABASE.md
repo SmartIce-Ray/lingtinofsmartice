@@ -10,9 +10,29 @@
 
 | 表名 | 用途 | 关键字段 |
 |------|------|----------|
-| `master_restaurant` | 餐厅主表 | id, restaurant_name, brand_id |
-| `master_employee` | 员工表（含店长） | id, employee_name, restaurant_id, role_code |
+| `master_restaurant` | 餐厅主表 | id, restaurant_name, brand_id, region_id |
+| `master_employee` | 员工表（含店长） | id, employee_name, restaurant_id, role_code, managed_region_ids |
+| `master_region` | 区域表 | id, region_name, region_code, parent_region_id, is_active |
 | `mt_dish_sales` | 菜品销售数据 | 菜品名称, 销售数量, restaurant_id |
+
+### master_region (区域表)
+
+门店按地理区域分组，用于管理层按区域管辖门店。
+
+```sql
+id UUID PRIMARY KEY
+region_name VARCHAR(50) NOT NULL    -- 区域名称：绵阳区、常熟区
+region_code VARCHAR(30)             -- 区域编码：mianyang、changshu
+parent_region_id UUID               -- 预留层级（暂不用）
+is_active BOOLEAN NOT NULL DEFAULT true
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
+```
+
+**关联**：`master_restaurant.region_id` → `master_region.id`（门店属于哪个区域）
+**管理员分配**：`master_employee.managed_region_ids UUID[]`（管理员管辖哪些区域）
+
+**权限解析优先级**：`managed_restaurant_ids` > `managed_region_ids` > `managed_brand_id` > 全部（总部）
 
 ## Lingtin 核心表
 
@@ -117,6 +137,10 @@ status VARCHAR(20)              -- pending/acknowledged/resolved/dismissed
 ## 表关系图
 
 ```
+master_region (1)
+    │
+    └──< master_restaurant (N)  -- region_id
+
 master_restaurant (1)
     │
     ├──< lingtin_visit_records (N)
@@ -129,7 +153,9 @@ master_restaurant (1)
 
 master_employee (1)
     │
-    └──< lingtin_visit_records (N)
+    ├──< lingtin_visit_records (N)
+    │
+    └──> master_region (M:N via managed_region_ids[])
 
 lingtin_dishname_view
     │

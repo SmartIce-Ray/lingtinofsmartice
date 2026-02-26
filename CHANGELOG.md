@@ -7,6 +7,42 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-02-26
+
+### 新增 (Added)
+- 门店区域分组架构 — 新增 `master_region` 表，按地理区域（绵阳/常熟/德阳/江油）组织门店
+- 区域管理页面 `/admin/regions` — 管理员可创建/编辑/删除区域、分配门店和管理员
+- `master_restaurant.region_id` 字段 — 门店关联到所属区域
+- `master_employee.managed_region_ids` 字段 — 管理员可按区域管辖门店（比手动维护 UUID 列表更便捷）
+- 认证层区域解析 — 登录时自动将 `managed_region_ids` 解析为门店 ID 列表，下游 API 无需改动
+- 权限优先级：精确门店 > 区域 > 品牌 > 全部（总部）
+- 后端 RegionModule — 8 个 API 端点（CRUD + 门店分配 + 管理员分配 + 全部门店 + 管理员列表）
+- UserMenu 新增「区域管理」入口（超级管理员可见）
+- 超级管理员角色 — `is_super_admin` 布尔字段，控制「产品洞察」和「区域管理」的可见性
+
+### 变更 (Changed)
+- 新门店挂到区域后，该区域管理员自动看到新店（无需手动更新 ID 列表）
+- 初始数据：4 个区域（绵阳区 4 店、常熟区 3 店、德阳区 1 店、江油区 1 店）
+
+## [1.6.0] - 2026-02-26
+
+### 新增 (Added)
+- 区域管理层支持 — 管理层可配置管辖门店范围，只看自己负责的门店数据
+- `master_employee.managed_restaurant_ids` 字段 — UUID 数组，存储管辖门店 ID
+- 认证系统返回 `managedRestaurantIds` — JWT + 前端 User 接口同步扩展
+- `useManagedScope` hook — 前端统一获取管辖范围，自动拼接 `managed_ids` 查询参数
+- 基准对比面板 — 区域管理层总览页底部显示"我的区域 vs 全公司"（情绪分/覆盖率/完成率）
+- 智能信号检测 — 连续无桌访、高优待办超期、情绪分连续下降自动预警
+- 改善亮点卡片 — 展示全公司标杆门店（情绪分/完成率最佳），自己门店标绿
+- `GET /api/dashboard/benchmark` 端点 — 区域 vs 全公司对比 + 信号检测 + 亮点
+- 所有管理层 API 端点支持 `managed_ids` 查询参数（briefing、overview、coverage、sentiment、suggestions、meeting）
+
+### 变更 (Changed)
+- 总览/洞察/会议/智库页面对区域管理层自动过滤为管辖门店数据
+- 会议录制页门店下拉只显示管辖门店
+- AI 智库数据查询范围限定为管辖门店
+- 总部管理层（`managedRestaurantIds=null`）行为完全不变，向后兼容
+
 ## [1.5.0] - 2026-02-26
 
 ### 新增 (Added)

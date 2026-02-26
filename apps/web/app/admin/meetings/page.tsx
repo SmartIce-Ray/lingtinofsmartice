@@ -7,6 +7,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
+import { useManagedScope } from '@/hooks/useManagedScope';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { MeetingDetail } from '@/components/recorder/MeetingDetail';
 import type { MeetingRecord, MeetingType, MeetingStatus } from '@/hooks/useMeetingStore';
@@ -195,12 +196,13 @@ function StoreMeetingCard({
 
 export default function AdminMeetingsPage() {
   const { user } = useAuth();
+  const { managedIdsParam } = useManagedScope();
   const [date, setDate] = useState(getYesterday);
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingRecord | null>(null);
   const [showMyMeetings, setShowMyMeetings] = useState(true);
 
   const { data: apiData, isLoading, error } = useSWR<AdminOverviewResponse>(
-    `/api/meeting/admin-overview?date=${date}${user?.id ? `&employee_id=${user.id}` : ''}`
+    `/api/meeting/admin-overview?date=${date}${user?.id ? `&employee_id=${user.id}` : ''}${managedIdsParam}`
   );
   const data = apiData;
   const hasData = !!data;

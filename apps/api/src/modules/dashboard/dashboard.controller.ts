@@ -1,10 +1,11 @@
 // Dashboard Controller - API endpoints for analytics
+// v1.7 - Added: managed_ids query param for regional manager scoping
 // v1.6 - Added: /briefing endpoint for admin daily briefing (anomaly detection)
 // v1.5 - Added: /restaurant/:id endpoint for restaurant detail view
 // v1.4 - Added: /restaurants-overview endpoint for admin dashboard with sentiment scores
 // v1.3 - Added: /restaurants endpoint for multi-store admin view
 
-import { Controller, Get, Query, Param } from '@nestjs/common';
+import { Controller, Get, Query, Param, BadRequestException } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { getChinaDateString, getYesterdayChinaDateString } from '../../common/utils/date';
 
@@ -14,20 +15,29 @@ export class DashboardController {
 
   // GET /api/dashboard/briefing - Admin daily briefing with anomaly detection
   @Get('briefing')
-  async getBriefing(@Query('date') date?: string) {
-    return this.dashboardService.getBriefing(date || getYesterdayChinaDateString());
+  async getBriefing(
+    @Query('date') date?: string,
+    @Query('managed_ids') managedIdsStr?: string,
+  ) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
+    return this.dashboardService.getBriefing(date || getYesterdayChinaDateString(), managedIds);
   }
 
   // GET /api/dashboard/restaurants - Get all restaurants for admin multi-store view
   @Get('restaurants')
-  async getRestaurants() {
-    return this.dashboardService.getRestaurantList();
+  async getRestaurants(@Query('managed_ids') managedIdsStr?: string) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
+    return this.dashboardService.getRestaurantList(managedIds);
   }
 
   // GET /api/dashboard/restaurants-overview - Get all restaurants with sentiment scores
   @Get('restaurants-overview')
-  async getRestaurantsOverview(@Query('date') date?: string) {
-    return this.dashboardService.getRestaurantsOverview(date || getYesterdayChinaDateString());
+  async getRestaurantsOverview(
+    @Query('date') date?: string,
+    @Query('managed_ids') managedIdsStr?: string,
+  ) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
+    return this.dashboardService.getRestaurantsOverview(date || getYesterdayChinaDateString(), managedIds);
   }
 
   // GET /api/dashboard/coverage
@@ -35,10 +45,13 @@ export class DashboardController {
   async getCoverage(
     @Query('restaurant_id') restaurantId: string,
     @Query('date') date?: string,
+    @Query('managed_ids') managedIdsStr?: string,
   ) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
     return this.dashboardService.getCoverageStats(
       restaurantId,
       date || getChinaDateString(),
+      managedIds,
     );
   }
 
@@ -73,10 +86,13 @@ export class DashboardController {
   async getSentimentSummary(
     @Query('restaurant_id') restaurantId: string,
     @Query('date') date?: string,
+    @Query('managed_ids') managedIdsStr?: string,
   ) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
     return this.dashboardService.getSentimentSummary(
       restaurantId,
       date || getChinaDateString(),
+      managedIds,
     );
   }
 
@@ -97,10 +113,13 @@ export class DashboardController {
   async getSuggestions(
     @Query('restaurant_id') restaurantId: string,
     @Query('days') days?: string,
+    @Query('managed_ids') managedIdsStr?: string,
   ) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
     return this.dashboardService.getSuggestions(
       restaurantId,
       parseInt(days || '7', 10),
+      managedIds,
     );
   }
 
@@ -108,6 +127,22 @@ export class DashboardController {
   @Get('motivation-stats')
   async getMotivationStats(@Query('restaurant_id') restaurantId: string) {
     return this.dashboardService.getMotivationStats(restaurantId);
+  }
+
+  // GET /api/dashboard/benchmark - Regional manager benchmark vs company
+  @Get('benchmark')
+  async getBenchmark(
+    @Query('managed_ids') managedIdsStr?: string,
+    @Query('days') days?: string,
+  ) {
+    const managedIds = DashboardService.parseManagedIds(managedIdsStr);
+    if (!managedIds) {
+      throw new BadRequestException('managed_ids is required for benchmark');
+    }
+    return this.dashboardService.getBenchmark(
+      managedIds,
+      parseInt(days || '7', 10),
+    );
   }
 
   // GET /api/dashboard/restaurant/:id - Get restaurant detail with visit records

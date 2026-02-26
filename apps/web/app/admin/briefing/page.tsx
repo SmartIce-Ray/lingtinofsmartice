@@ -1,4 +1,5 @@
 // Admin Overview Page - Merged briefing + dashboard
+// v2.1 - Added: regional manager support (managed scope + benchmark panel)
 // v2.0 - Combined: problem cards + metrics row + keywords + store grid
 
 'use client';
@@ -7,7 +8,9 @@ import { useRef, useState, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
+import { useManagedScope } from '@/hooks/useManagedScope';
 import { UserMenu } from '@/components/layout/UserMenu';
+import { BenchmarkPanel } from '@/components/admin/BenchmarkPanel';
 import { getChinaYesterday, shiftDate, formatDateDisplay } from '@/lib/date-utils';
 
 // --- Types ---
@@ -95,6 +98,7 @@ function formatSentiment(score: number | null): string {
 
 export default function AdminBriefingPage() {
   const { user } = useAuth();
+  const { isScoped, managedIdsParam, storeCount } = useManagedScope();
   const router = useRouter();
 
   // Date navigation
@@ -131,10 +135,10 @@ export default function AdminBriefingPage() {
     [playingKey, stopAudio],
   );
 
-  // Fetch briefing data
-  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?date=${selectedDate}`);
+  // Fetch briefing data (scoped by managed restaurants)
+  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?date=${selectedDate}${managedIdsParam}`);
   // Fetch overview data (keywords + store grid)
-  const { data: overviewData } = useSWR<OverviewResponse>(`/api/dashboard/restaurants-overview?date=${selectedDate}`);
+  const { data: overviewData } = useSWR<OverviewResponse>(`/api/dashboard/restaurants-overview?date=${selectedDate}${managedIdsParam}`);
 
   const userName = user?.employeeName || user?.username || '您';
   const greeting = data?.greeting || '您好';
@@ -154,7 +158,14 @@ export default function AdminBriefingPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">总览</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold text-gray-900">总览</h1>
+          {isScoped && (
+            <span className="text-xs bg-primary-50 text-primary-600 px-2 py-0.5 rounded-full">
+              管理 {storeCount} 家门店
+            </span>
+          )}
+        </div>
         <UserMenu />
       </header>
 
@@ -369,6 +380,11 @@ export default function AdminBriefingPage() {
               })}
             </div>
           </div>
+        )}
+
+        {/* Benchmark panel (regional managers only) */}
+        {isScoped && (
+          <BenchmarkPanel managedIdsParam={managedIdsParam} />
         )}
 
         {/* Bottom spacing for nav */}

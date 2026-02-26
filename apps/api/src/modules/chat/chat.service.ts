@@ -206,6 +206,7 @@ export class ChatService {
     userName: string | undefined,
     employeeId: string | undefined,
     res: Response,
+    managedRestaurantIds: string[] | null = null,
   ) {
 this.logger.log(`Chat request: ${message.slice(0, 50)}...`);
 this.logger.log(`Role: ${roleCode}, User: ${userName}`);
@@ -291,7 +292,7 @@ this.logger.log(`Messages in context: ${messages.length}`);
             // Send thinking status BEFORE executing tool
             res.write(`data: ${JSON.stringify({ type: 'thinking', content: thinkingStatus })}\n\n`);
 
-            const result = await this.executeToolCall(toolCall, restaurantId);
+            const result = await this.executeToolCall(toolCall, restaurantId, managedRestaurantIds);
 
             // Add tool result to messages
             messages.push({
@@ -394,6 +395,7 @@ this.logger.log(`Messages in context: ${messages.length}`);
   private async executeToolCall(
     toolCall: { id: string; type: string; function: { name: string; arguments: string } },
     restaurantId: string,
+    managedRestaurantIds: string[] | null = null,
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     const { name, arguments: argsJson } = toolCall.function;
 
@@ -406,7 +408,7 @@ this.logger.log(`Executing tool: ${name}`);
         const { sql, purpose } = args;
         this.logger.log(`[query_database] ${purpose}`);
 
-        const result = await this.executeQuery(sql, restaurantId);
+        const result = await this.executeQuery(sql, restaurantId, managedRestaurantIds);
         this.logger.log(`[query_database] Returned ${result?.length || 0} rows`);
 
         return { success: true, data: result };
@@ -423,7 +425,7 @@ this.logger.log(`Executing tool: ${name}`);
    * Execute SQL query against the database
    * Security: Only allows read-only SELECT queries on allowed tables
    */
-  private async executeQuery(sql: string, restaurantId: string): Promise<any[]> {
+  private async executeQuery(sql: string, restaurantId: string, managedRestaurantIds: string[] | null = null): Promise<any[]> {
     // Normalize SQL for validation
     const normalizedSql = sql.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -477,17 +479,29 @@ this.logger.log(`Executing tool: ${name}`);
 
     const client = this.supabase.getClient();
 
-    // For lingtin_visit_records, add restaurant_id filter for security
+    // For lingtin_visit_records, add restaurant scope filter for security
     let modifiedSql = sql;
     if (normalizedSql.includes('lingtin_visit_records')) {
-      // Add restaurant_id filter if not already present
+      // Add restaurant scope filter if not already present
       if (!normalizedSql.includes('restaurant_id')) {
+        // Determine the filter: managed IDs (regional), single ID (store), or none (HQ)
+        let scopeFilter: string;
+        if (managedRestaurantIds && managedRestaurantIds.length > 0) {
+          const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const validIds = managedRestaurantIds.filter(id => UUID_RE.test(id));
+          const idList = (validIds.length > 0 ? validIds : [restaurantId])
+            .map(id => `'${id}'`).join(',');
+          scopeFilter = `restaurant_id IN (${idList})`;
+        } else {
+          scopeFilter = `restaurant_id = '${restaurantId}'`;
+        }
+
         if (normalizedSql.includes('where')) {
-          modifiedSql = sql.replace(/where/i, `WHERE restaurant_id = '${restaurantId}' AND`);
+          modifiedSql = sql.replace(/where/i, `WHERE ${scopeFilter} AND`);
         } else if (normalizedSql.includes('from lingtin_visit_records')) {
           modifiedSql = sql.replace(
             /from\s+lingtin_visit_records/i,
-            `FROM lingtin_visit_records WHERE restaurant_id = '${restaurantId}'`
+            `FROM lingtin_visit_records WHERE ${scopeFilter}`
           );
         }
       }

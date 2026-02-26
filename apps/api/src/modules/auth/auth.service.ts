@@ -1,5 +1,5 @@
 // Auth Service - Handle user authentication and JWT tokens
-// v1.2 - Added restaurantName to user info
+// v1.3 - Added region-based managed restaurant resolution
 
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -13,6 +13,9 @@ export interface JwtPayload {
   restaurantId: string;
   restaurantName: string;
   roleCode: string;
+  managedRestaurantIds?: string[] | null;  // regional manager scope
+  managedRegionIds?: string[] | null;      // region-based scope
+  isSuperAdmin?: boolean;
 }
 
 export interface AuthUser {
@@ -22,6 +25,9 @@ export interface AuthUser {
   restaurantId: string;
   restaurantName: string;
   roleCode: string;
+  managedRestaurantIds: string[] | null;  // null = HQ admin (see all)
+  managedRegionIds: string[] | null;      // region-based scope
+  isSuperAdmin: boolean;
 }
 
 @Injectable()
@@ -46,6 +52,9 @@ export class AuthService {
           restaurantId: 'demo-restaurant-id',
           restaurantName: '测试店铺',
           roleCode: 'manager',
+          managedRestaurantIds: null,
+          managedRegionIds: null,
+          isSuperAdmin: false,
         };
       }
       return null;
@@ -58,6 +67,7 @@ export class AuthService {
       .from('master_employee')
       .select(`
         id, username, password_hash, employee_name, restaurant_id, role_code, is_active,
+        managed_restaurant_ids, managed_brand_id, managed_region_ids, is_super_admin,
         master_restaurant:restaurant_id (restaurant_name)
       `)
       .eq('username', username)
@@ -97,7 +107,12 @@ export class AuthService {
     const restaurantData = user.master_restaurant as any;
     const restaurantName = restaurantData?.restaurant_name || '未知店铺';
 
-    this.logger.log(`User validated: ${username} (restaurant: ${user.restaurant_id})`);
+    // Resolve managed restaurant scope for administrator role
+    const managedRestaurantIds = await this.resolveManagedRestaurants(
+      client, user.managed_restaurant_ids, user.managed_region_ids, user.managed_brand_id,
+    );
+
+    this.logger.log(`User validated: ${username} (restaurant: ${user.restaurant_id}, managed: ${managedRestaurantIds ? managedRestaurantIds.length + ' stores' : 'all'})`);
 
     return {
       id: user.id,
@@ -106,6 +121,9 @@ export class AuthService {
       restaurantId: user.restaurant_id,
       restaurantName,
       roleCode: user.role_code,
+      managedRestaurantIds,
+      managedRegionIds: user.managed_region_ids || null,
+      isSuperAdmin: user.is_super_admin === true,
     };
   }
 
@@ -117,6 +135,9 @@ export class AuthService {
       restaurantId: user.restaurantId,
       restaurantName: user.restaurantName,
       roleCode: user.roleCode,
+      managedRestaurantIds: user.managedRestaurantIds,
+      managedRegionIds: user.managedRegionIds,
+      isSuperAdmin: user.isSuperAdmin,
     };
 
     return {
@@ -128,8 +149,47 @@ export class AuthService {
         restaurantId: user.restaurantId,
         restaurantName: user.restaurantName,
         roleCode: user.roleCode,
+        managedRestaurantIds: user.managedRestaurantIds,
+        managedRegionIds: user.managedRegionIds,
+        isSuperAdmin: user.isSuperAdmin,
       },
     };
+  }
+
+  // Resolve managed restaurants: IDs array > region_ids > brand_id lookup > null (HQ, see all)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async resolveManagedRestaurants(client: any, managedIds: string[] | null, regionIds: string[] | null, brandId: number | null): Promise<string[] | null> {
+    // Priority 1: explicit managed_restaurant_ids
+    if (managedIds && managedIds.length > 0) {
+      return managedIds;
+    }
+
+    // Priority 2: managed_region_ids → look up restaurants in those regions
+    if (regionIds && regionIds.length > 0) {
+      const { data: restaurants } = await client
+        .from('master_restaurant')
+        .select('id')
+        .in('region_id', regionIds)
+        .eq('is_active', true);
+      if (restaurants && restaurants.length > 0) {
+        return restaurants.map((r: { id: string }) => r.id);
+      }
+    }
+
+    // Priority 3: managed_brand_id → look up restaurants under that brand
+    if (brandId) {
+      const { data: restaurants } = await client
+        .from('master_restaurant')
+        .select('id')
+        .eq('brand_id', brandId)
+        .eq('is_active', true);
+      if (restaurants && restaurants.length > 0) {
+        return restaurants.map((r: { id: string }) => r.id);
+      }
+    }
+
+    // Priority 4: null → HQ admin, sees everything
+    return null;
   }
 
   async verifyToken(token: string): Promise<JwtPayload | null> {

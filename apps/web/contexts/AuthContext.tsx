@@ -14,6 +14,9 @@ interface User {
   restaurantId: string;
   restaurantName: string;
   roleCode: string;
+  managedRestaurantIds: string[] | null;  // null = HQ admin (see all)
+  managedRegionIds: string[] | null;      // region-based scope
+  isSuperAdmin: boolean;
 }
 
 interface AuthContextType {

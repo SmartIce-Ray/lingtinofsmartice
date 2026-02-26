@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
+import { useManagedScope } from '@/hooks/useManagedScope';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { useMeetingStore } from '@/hooks/useMeetingStore';
 import { processMeetingInBackground } from '@/lib/backgroundProcessor';
@@ -53,6 +54,7 @@ interface Toast {
 export default function AdminMeetingRecordPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { managedIdsParam } = useManagedScope();
   const restaurantId = user?.restaurantId || '';
 
   // Store selection → derives meeting type
@@ -61,8 +63,8 @@ export default function AdminMeetingRecordPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const meetingType: MeetingType = selectedStoreId ? 'one_on_one' : 'cross_store_review';
 
-  // Fetch restaurants for store dropdown
-  const { data: restaurantsData } = useSWR<RestaurantsResponse>('/api/dashboard/restaurants');
+  // Fetch restaurants for store dropdown (scoped by managed restaurants)
+  const { data: restaurantsData } = useSWR<RestaurantsResponse>(`/api/dashboard/restaurants?_=1${managedIdsParam}`);
   const stores = restaurantsData?.restaurants || [];
   const selectedStore = stores.find(s => s.id === selectedStoreId);
 
@@ -108,7 +110,7 @@ export default function AdminMeetingRecordPage() {
   // Briefing data for smart agenda
   const [agendaCollapsed, setAgendaCollapsed] = useState(false);
   const { data: briefingData } = useSWR<BriefingResponse>(
-    '/api/dashboard/briefing?date=yesterday'
+    `/api/dashboard/briefing?date=yesterday${managedIdsParam}`
   );
   const problems = briefingData?.problems || [];
 

@@ -120,11 +120,19 @@ export class MeetingController {
   async getAdminOverview(
     @Query('date') date?: string,
     @Query('employee_id') employeeId?: string,
+    @Query('managed_ids') managedIdsStr?: string,
   ) {
-    this.logger.log(`▶ GET /meeting/admin-overview?date=${date || 'yesterday'}&employee_id=${employeeId || 'none'}`);
-    const result = await this.meetingService.getAdminOverview(date, employeeId);
+    this.logger.log(`▶ GET /meeting/admin-overview?date=${date || 'yesterday'}&employee_id=${employeeId || 'none'}&managed_ids=${managedIdsStr || 'all'}`);
+    const managedIds = managedIdsStr ? this.parseManagedIds(managedIdsStr) : null;
+    const result = await this.meetingService.getAdminOverview(date, employeeId, managedIds);
     this.logger.log(`◀ Admin overview: ${result.stores.length} stores, ${result.summary.total_meetings} meetings`);
     return result;
+  }
+
+  private parseManagedIds(str: string): string[] | null {
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const ids = str.split(',').filter(id => UUID_REGEX.test(id.trim()));
+    return ids.length > 0 ? ids : null;
   }
 
   // GET /api/meeting/today - Query by restaurant_id + date
