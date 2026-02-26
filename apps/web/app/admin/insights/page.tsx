@@ -1,5 +1,5 @@
-// Admin Insights Page - Merged customer insights + product insights
-// Segmented control to switch between the two views
+// Admin Insights Page - Customer insights + Product insights + Employee feedback
+// Segmented control to switch between views
 
 'use client';
 
@@ -7,9 +7,10 @@ import { useState } from 'react';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { CustomerInsights } from '@/components/admin/CustomerInsights';
 import { ProductInsights } from '@/components/admin/ProductInsights';
+import { FeedbackManagement } from '@/components/admin/FeedbackManagement';
 import { getChinaYesterday, shiftDate, formatDateDisplay } from '@/lib/date-utils';
 
-type InsightTab = 'customer' | 'product';
+type InsightTab = 'customer' | 'product' | 'feedback';
 
 export default function InsightsPage() {
   const [activeTab, setActiveTab] = useState<InsightTab>('customer');
@@ -23,25 +24,27 @@ export default function InsightsPage() {
       <header className="bg-white shadow-sm px-4 py-3 flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">洞察</h1>
         <div className="flex items-center gap-2">
-          {/* Date navigation */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 active:bg-gray-200"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-            </button>
-            <span className="text-sm text-gray-500 font-medium px-1">{formatDateDisplay(selectedDate)}</span>
-            <button
-              onClick={() => canGoForward && setSelectedDate(shiftDate(selectedDate, 1))}
-              disabled={!canGoForward}
-              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
-                canGoForward ? 'text-gray-400 hover:bg-gray-100 active:bg-gray-200' : 'text-gray-200'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-            </button>
-          </div>
+          {/* Date navigation (only for customer/product tabs) */}
+          {activeTab !== 'feedback' && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
+                className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 active:bg-gray-200"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <span className="text-sm text-gray-500 font-medium px-1">{formatDateDisplay(selectedDate)}</span>
+              <button
+                onClick={() => canGoForward && setSelectedDate(shiftDate(selectedDate, 1))}
+                disabled={!canGoForward}
+                className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                  canGoForward ? 'text-gray-400 hover:bg-gray-100 active:bg-gray-200' : 'text-gray-200'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </div>
+          )}
           <UserMenu />
         </div>
       </header>
@@ -69,12 +72,24 @@ export default function InsightsPage() {
           >
             产品
           </button>
+          <button
+            onClick={() => setActiveTab('feedback')}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === 'feedback'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            员工反馈
+          </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="px-4 py-3">
-        {activeTab === 'customer' ? <CustomerInsights date={selectedDate} /> : <ProductInsights />}
+        {activeTab === 'customer' && <CustomerInsights date={selectedDate} />}
+        {activeTab === 'product' && <ProductInsights />}
+        {activeTab === 'feedback' && <FeedbackManagement />}
       </div>
 
       {/* Bottom spacing for nav */}

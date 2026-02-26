@@ -196,7 +196,7 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
-| v1.4.0 管理层会议功能 | feat/meeting-recording | ✅ 代码完成，构建通过，待用户测试 | 新增：会议Tab+洞察合并+录制页+admin-overview API |
-| PR #7: 厨师长角色 + CHANGELOG + 综合产品指南 | feat/meeting-recording | PR 已创建，待 Jeremy merge | PR: https://github.com/JeremyDong22/lingtinofsmartice/pull/7 |
+| v1.4.0 管理层会议功能 | feat/meeting-recording | ✅ 已合并 | PR #7 → #10 已 merge |
+| 顾客洞察按门店分组展示 | feat/meeting-recording | ✅ 已合并 | PR #11 已 merge。含门店下拉选择器+日期范围选择器+后端分组查询 |
 | 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 无效。线上 Zeabur 有正确 key 所以生产正常 |
 | 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API，本地后端因 service key 无效运行在 MOCK MODE |

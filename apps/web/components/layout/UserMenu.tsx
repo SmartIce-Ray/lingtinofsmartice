@@ -1,5 +1,5 @@
 // User Menu Component - Display user avatar with dropdown menu
-// v1.1 - Added 问卷管理 entry for admin role
+// v1.2 - Added 提交反馈 + 我的反馈 entries for all roles
 
 'use client';
 
@@ -73,6 +73,30 @@ export function UserMenu() {
               问卷管理
             </button>
           )}
+
+          {/* Submit Feedback (all roles) */}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              router.push('/feedback');
+            }}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+          >
+            <span className="text-gray-400">💬</span>
+            提交反馈
+          </button>
+
+          {/* My Feedback History (all roles) */}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              router.push('/feedback/history');
+            }}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+          >
+            <span className="text-gray-400">📝</span>
+            我的反馈
+          </button>
 
           {/* Logout Button */}
           <button

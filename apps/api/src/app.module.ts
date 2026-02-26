@@ -12,6 +12,7 @@ import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { QuestionTemplatesModule } from './modules/question-templates/question-templates.module';
 import { MeetingModule } from './modules/meeting/meeting.module';
 import { DailySummaryModule } from './modules/daily-summary/daily-summary.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 import { AuthModule, JwtAuthGuard } from './modules/auth';
 import { SupabaseModule } from './common/supabase/supabase.module';
 
@@ -28,6 +29,7 @@ import { SupabaseModule } from './common/supabase/supabase.module';
     QuestionTemplatesModule,
     MeetingModule,
     DailySummaryModule,
+    FeedbackModule,
   ],
   providers: [
     // Apply JWT guard globally - all routes require auth by default
