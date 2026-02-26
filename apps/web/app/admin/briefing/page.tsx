@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserMenu } from '@/components/layout/UserMenu';
+import { getChinaYesterday, shiftDate, formatDateDisplay } from '@/lib/date-utils';
 
 // --- Types ---
 interface BriefingEvidence {
@@ -96,6 +97,11 @@ export default function AdminBriefingPage() {
   const { user } = useAuth();
   const router = useRouter();
 
+  // Date navigation
+  const [selectedDate, setSelectedDate] = useState(getChinaYesterday);
+  const maxDate = getChinaYesterday();
+  const canGoForward = selectedDate < maxDate;
+
   // Audio playback
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -125,17 +131,10 @@ export default function AdminBriefingPage() {
     [playingKey, stopAudio],
   );
 
-  // Compute yesterday's date (briefing shows prior-day operations)
-  const yesterday = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
-
-  // Fetch briefing data (yesterday's date — morning review of prior day)
-  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?date=${yesterday}`);
+  // Fetch briefing data
+  const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?date=${selectedDate}`);
   // Fetch overview data (keywords + store grid)
-  const { data: overviewData } = useSWR<OverviewResponse>('/api/dashboard/restaurants-overview');
+  const { data: overviewData } = useSWR<OverviewResponse>(`/api/dashboard/restaurants-overview?date=${selectedDate}`);
 
   const userName = user?.employeeName || user?.username || '您';
   const greeting = data?.greeting || '您好';
@@ -149,9 +148,7 @@ export default function AdminBriefingPage() {
   const restaurants = overviewData?.restaurants || [];
   const recentKeywords = overviewData?.recent_keywords || [];
 
-  // Format today's date
-  const today = new Date();
-  const dateStr = `${today.getMonth() + 1}/${today.getDate()} 周${'日一二三四五六'[today.getDay()]}`;
+  const dateDisplay = formatDateDisplay(selectedDate);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -162,7 +159,7 @@ export default function AdminBriefingPage() {
       </header>
 
       <div className="px-4 py-4 space-y-4">
-        {/* Greeting banner */}
+        {/* Greeting banner + date navigation */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-900">
@@ -170,16 +167,47 @@ export default function AdminBriefingPage() {
             </h2>
             {!isLoading && problems.length > 0 && (
               <p className="text-sm text-gray-500 mt-0.5">
-                昨日 {restaurantCount} 家门店，{problems.length} 件事需要关注
+                {restaurantCount} 家门店，{problems.length} 件事需要关注
               </p>
             )}
             {!isLoading && problems.length === 0 && restaurantCount > 0 && (
               <p className="text-sm text-gray-500 mt-0.5">
-                昨日 {restaurantCount} 家门店均运营良好
+                {restaurantCount} 家门店均运营良好
               </p>
             )}
           </div>
-          <span className="text-sm text-gray-400">{dateStr}</span>
+          {/* Date navigation */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
+              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 active:bg-gray-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'date';
+                input.value = selectedDate;
+                input.max = maxDate;
+                input.onchange = () => { if (input.value && input.value <= maxDate) setSelectedDate(input.value); };
+                input.showPicker?.();
+                input.click();
+              }}
+              className="text-sm text-gray-500 font-medium px-1 hover:text-gray-700"
+            >
+              {dateDisplay}
+            </button>
+            <button
+              onClick={() => canGoForward && setSelectedDate(shiftDate(selectedDate, 1))}
+              disabled={!canGoForward}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                canGoForward ? 'text-gray-400 hover:bg-gray-100 active:bg-gray-200' : 'text-gray-200'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
         </div>
 
         {/* Compact metrics row */}
@@ -247,7 +275,7 @@ export default function AdminBriefingPage() {
             <div className="text-4xl mb-3">✅</div>
             <h3 className="text-lg font-semibold text-gray-900 mb-1">一切正常</h3>
             <p className="text-sm text-gray-500">
-              昨日 {restaurantCount} 家门店均运营良好
+              {restaurantCount} 家门店均运营良好
             </p>
             {avgSentiment != null && (
               <p className="text-sm text-gray-400 mt-1">
@@ -275,7 +303,7 @@ export default function AdminBriefingPage() {
         {/* Today's keywords (from dashboard) */}
         {recentKeywords.length > 0 && (
           <div className="bg-white rounded-xl p-4">
-            <div className="text-xs text-gray-500 mb-2">今日关键词</div>
+            <div className="text-xs text-gray-500 mb-2">关键词</div>
             <div className="flex flex-wrap gap-2">
               {recentKeywords.map((kw, idx) => (
                 <span

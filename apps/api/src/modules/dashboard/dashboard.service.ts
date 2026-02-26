@@ -20,6 +20,7 @@ export interface FeedbackWithContext {
   customerAnswers: string[];
   transcript: string;
   audioUrl: string | null;
+  restaurantId: string;
 }
 
 // Interface for negative feedback conversation context (used in dish ranking)
@@ -367,6 +368,29 @@ export class DashboardService {
             { text: '偏咸', visitId: 'mock-v7', tableId: 'C1', managerQuestions: ['口味怎么样？'], customerAnswers: ['有点咸，特别是那个红烧肉'], transcript: '', audioUrl: null },
           ] },
         ],
+        by_restaurant: [
+          {
+            restaurant_id: 'mock-rest-1', restaurant_name: '望京旗舰店',
+            positive_count: 7, negative_count: 2,
+            positive_feedbacks: [
+              { text: '味道很好', count: 4, contexts: [] },
+              { text: '服务热情', count: 3, contexts: [] },
+            ],
+            negative_feedbacks: [
+              { text: '上菜慢', count: 2, contexts: [] },
+            ],
+          },
+          {
+            restaurant_id: 'mock-rest-2', restaurant_name: '三里屯店',
+            positive_count: 5, negative_count: 1,
+            positive_feedbacks: [
+              { text: '环境不错', count: 2, contexts: [] },
+            ],
+            negative_feedbacks: [
+              { text: '偏咸', count: 1, contexts: [] },
+            ],
+          },
+        ],
       };
     }
     const client = this.supabase.getClient();
@@ -374,7 +398,7 @@ export class DashboardService {
     // Build query - either for single restaurant or all restaurants
     let query = client
       .from('lingtin_visit_records')
-      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript, audio_url')
+      .select('id, table_id, feedbacks, manager_questions, customer_answers, corrected_transcript, audio_url, restaurant_id')
       .eq('visit_date', date)
       .eq('status', 'processed');
 
@@ -409,6 +433,7 @@ export class DashboardService {
               customerAnswers: record.customer_answers || [],
               transcript: record.corrected_transcript || '',
               audioUrl: record.audio_url || null,
+              restaurantId: record.restaurant_id || '',
             };
             if (fb.sentiment === 'positive') {
               positive++;
@@ -448,6 +473,47 @@ export class DashboardService {
 
     const total = positive + neutral + negative;
 
+    // Per-restaurant breakdown when cross-restaurant
+    let byRestaurantResult: {
+      restaurant_id: string;
+      restaurant_name: string;
+      positive_count: number;
+      negative_count: number;
+      positive_feedbacks: { text: string; count: number; contexts: FeedbackWithContext[] }[];
+      negative_feedbacks: { text: string; count: number; contexts: FeedbackWithContext[] }[];
+    }[] | undefined;
+
+    if (restaurantId === 'all') {
+      const { data: restaurants } = await client
+        .from('master_restaurant')
+        .select('id, restaurant_name')
+        .eq('is_active', true);
+      const restNameMap = new Map((restaurants || []).map(r => [r.id, r.restaurant_name]));
+
+      const restBuckets = new Map<string, { positive: FeedbackWithContext[]; negative: FeedbackWithContext[] }>();
+      for (const fb of positiveFeedbacks) {
+        const bucket = restBuckets.get(fb.restaurantId) || { positive: [], negative: [] };
+        bucket.positive.push(fb);
+        restBuckets.set(fb.restaurantId, bucket);
+      }
+      for (const fb of negativeFeedbacks) {
+        const bucket = restBuckets.get(fb.restaurantId) || { positive: [], negative: [] };
+        bucket.negative.push(fb);
+        restBuckets.set(fb.restaurantId, bucket);
+      }
+
+      byRestaurantResult = Array.from(restBuckets.entries())
+        .map(([restId, bucket]) => ({
+          restaurant_id: restId,
+          restaurant_name: restNameMap.get(restId) || restId,
+          positive_count: bucket.positive.length,
+          negative_count: bucket.negative.length,
+          positive_feedbacks: groupFeedbacks(bucket.positive, 6),
+          negative_feedbacks: groupFeedbacks(bucket.negative, 6),
+        }))
+        .sort((a, b) => b.negative_count - a.negative_count);
+    }
+
     return {
       positive_count: positive,
       neutral_count: neutral,
@@ -458,6 +524,7 @@ export class DashboardService {
       total_feedbacks: total,
       positive_feedbacks: groupFeedbacks(positiveFeedbacks, 6),
       negative_feedbacks: groupFeedbacks(negativeFeedbacks, 6),
+      ...(byRestaurantResult ? { by_restaurant: byRestaurantResult } : {}),
     };
   }
 
