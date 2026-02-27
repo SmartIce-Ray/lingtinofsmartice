@@ -47,3 +47,6 @@ supabase/.temp/
 
 # Dev-only mock data (never commit)
 **/dev-mock-data.*
+
+# AI analysis workspace (local only)
+analysis/

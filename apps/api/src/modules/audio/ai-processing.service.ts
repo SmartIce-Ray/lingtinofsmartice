@@ -1,5 +1,5 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v5.0 - DashScope Paraformer-v2 STT (with Xunfei fallback) + Gemini 2.5 Flash
+// v6.0 - Prompt V2: fine-grained sentiment + feedback consistency + fallback extraction
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -248,6 +248,7 @@ export class AiProcessingService {
 
   /**
    * Clean raw STT transcript before AI analysis
+   * - Remove incremental repetitions (STT artifact: "你好"→"你好想"→"你好想请")
    * - Deduplicate consecutive repeated phrases
    * - Remove filler-word-only segments
    * - Merge very short fragments into adjacent sentences
@@ -261,12 +262,17 @@ export class AiProcessingService {
         .join('\n');
     }
 
+    // Step 0: Remove incremental repetition patterns (STT artifact)
+    // Pattern: "哎你好" "哎你好像" "哎你好像请" ... each line adds 1-2 chars
+    // Detection: if a substring appears as prefix of the next, it's incremental repetition
+    let cleaned = this.removeIncrementalRepetitions(raw);
+
     // Split into segments by common delimiters (，。！？、；,.)
-    let segments = raw.split(/(?<=[，。！？、；,.?!])\s*/);
+    let segments = cleaned.split(/(?<=[，。！？、；,.?!])\s*/);
 
     // If no delimiter was found, treat the whole text as one segment
-    if (segments.length <= 1 && raw.length > 0) {
-      segments = [raw];
+    if (segments.length <= 1 && cleaned.length > 0) {
+      segments = [cleaned];
     }
 
     // Step 1: Deduplicate consecutive repeated phrases
@@ -300,6 +306,68 @@ export class AiProcessingService {
   }
 
   /**
+   * Remove incremental repetition artifacts from STT output.
+   * Pattern: same prefix grows by 1-3 chars each repetition, e.g.:
+   * "哎你好哎你好像哎你好像请哎你好像请了" → keep only the longest version
+   */
+  private removeIncrementalRepetitions(text: string): string {
+    // Split by common delimiters to work on segments
+    const parts = text.split(/(?<=[，。！？,.?!])\s*/);
+    if (parts.length <= 1) {
+      // For text without delimiters, try to detect pattern in raw text
+      return this.deduplicateIncrementalRaw(text);
+    }
+    return parts.map((p) => this.deduplicateIncrementalRaw(p)).join('');
+  }
+
+  /**
+   * Core incremental dedup: if the same prefix is repeated with 1-3 extra chars each time,
+   * keep only the final (longest) version.
+   * Verifies the incremental growth pattern (each occurrence adds 1-3 chars) to avoid
+   * false positives on text that legitimately repeats a phrase.
+   */
+  private deduplicateIncrementalRaw(text: string): string {
+    if (text.length < 20) return text;
+
+    // Try to find a repeated seed (4-10 chars) that starts multiple "incremental" copies
+    for (let seedLen = 4; seedLen <= Math.min(10, Math.floor(text.length / 3)); seedLen++) {
+      const seed = text.substring(0, seedLen);
+      // Find all non-overlapping positions of the seed
+      const positions: number[] = [];
+      let idx = 0;
+      while ((idx = text.indexOf(seed, idx)) !== -1) {
+        positions.push(idx);
+        idx += seedLen; // non-overlapping
+      }
+      // Need at least 5 occurrences
+      if (positions.length < 5) continue;
+
+      // Verify incremental growth pattern: each gap between positions should be
+      // seedLen + 0-3 chars (the "growing" part of the repetition)
+      let incrementalCount = 1;
+      for (let i = 1; i < positions.length; i++) {
+        const gap = positions[i] - positions[i - 1];
+        if (gap >= seedLen && gap <= seedLen + 3) {
+          incrementalCount++;
+        } else {
+          // Non-incremental gap — the block ends here
+          break;
+        }
+      }
+
+      // Only treat as incremental if a significant consecutive run was found
+      if (incrementalCount >= 5) {
+        // The last occurrence in the incremental block is the longest version
+        const blockEnd = positions[incrementalCount - 1];
+        // Return from the last seed occurrence onward (the final, longest version + any trailing content)
+        return text.substring(blockEnd);
+      }
+    }
+
+    return text;
+  }
+
+  /**
    * Process transcript with AI for correction and tagging
    * Throws error if API key not configured or processing fails
    */
@@ -314,65 +382,104 @@ export class AiProcessingService {
       throw new Error('AI_NOT_CONFIGURED: OpenRouter AI 未配置');
     }
 
-    const systemPrompt = `分析餐饮桌访对话，提取结构化信息。
+    const systemPrompt = `你是餐饮桌访对话分析专家。分析店长与顾客的对话，提取结构化信息。
 
-## 说话人识别指引
-对话文本可能包含"说话人1:"、"说话人2:"等标签（来自语音识别的说话人分离）。
-- 说话人1 通常是店长/服务员（主动提问、问候的一方）
-- 说话人2 通常是顾客（回答、给出反馈的一方）
-- 但你必须根据对话内容语义来判断角色，不要盲目信任标签
-- 如果没有说话人标签，则根据上下文推断谁是店长、谁是顾客
+## 角色识别（重要）
+对话是店长/服务员与顾客之间的桌访交流。根据语义模式判断角色：
+- **店长/服务员**特征：打招呼("你好/打扰一下")、提问("菜品怎么样/第几次来")、推介("大众点评打卡送饮料")、致谢("祝你们用餐愉快")
+- **顾客**特征：回答提问("还可以/第1次")、评价菜品("好吃/有点咸")、表达来源("美团/朋友介绍")
+- feedbacks 只能包含**顾客**说的评价，不要把店长的话当作顾客反馈
 
-输出JSON格式（只输出JSON，无其他内容）：
+输出JSON（只输出JSON，无其他内容）：
 {
   "aiSummary": "20字以内摘要",
-  "sentimentScore": 0.5,
+  "sentimentScore": 0.62,
   "feedbacks": [
-    {"text": "清蒸鲈鱼很新鲜", "sentiment": "positive"},
-    {"text": "上菜太慢", "sentiment": "negative"},
-    {"text": "建议加一道冷面", "sentiment": "suggestion"}
+    {"text": "五花趾还挺好吃的", "sentiment": "positive"},
+    {"text": "上菜速度有点慢", "sentiment": "negative"},
+    {"text": "分量再多点就好了", "sentiment": "suggestion"}
   ],
-  "managerQuestions": ["店长问的问题1", "店长问的问题2"],
-  "customerAnswers": ["顾客的回答1", "顾客的回答2"]
+  "managerQuestions": ["菜品口感怎么样", "是第几次来"],
+  "customerAnswers": ["还不错", "第1次，朋友介绍来的"]
 }
 
-规则：
-1. sentimentScore: 反映整桌对话的整体氛围（顾客是否愉快），不是feedbacks的加权平均
-   - < 0.4 = 负面氛围（顾客明显不满、抱怨）
-   - 0.4 ~ 0.6 = 中性氛围（平淡交流、无明显情绪）
-   - > 0.6 = 正面氛围（顾客满意、愉快）
-   锚定示例：
-   - 0.1~0.2: 顾客投诉、要求退菜、表达强烈不满
-   - 0.3~0.4: 顾客有抱怨但语气平和，如"有点咸"、"等了挺久"
-   - 0.5: 纯粹寒暄、顾客回答简短无情绪，如"还行"、"嗯可以"
-   - 0.6~0.7: 顾客表达满意但不热烈，如"味道不错"、"挺好的"
-   - 0.8~0.9: 顾客多次夸赞、明确表示会再来
+## 规则
 
-2. feedbacks: 提取顾客对菜品、服务、环境的所有评价短语（不限数量，但不要编造）
-   - 每条必须包含评价对象+评价词（如"清蒸鲈鱼很新鲜"而不是单独的"新鲜"）
-   - 如果原文没有提到具体菜品，不要编造菜品名称，可用原文表述如"菜很好吃"
-   - 一句话包含多个评价时拆分：如"菜好吃但上菜慢"→ 拆成两条
-   - sentiment 判断标准（每条独立判断，不受整体氛围影响）：
-     positive: 明确表达满意、喜欢、赞赏
-       示例: "很好吃"、"味道不错"、"服务很热情"、"环境很舒服"、"不错"、"不用等"
-     negative: 明确表达不满、批评、抱怨
-       示例: "太咸了"、"上菜太慢"、"服务态度差"、"不新鲜"、"没什么味道"、"不行"
-     neutral: 模糊评价、无法明确判断好坏
-       示例: "还行"、"还可以"、"一般"、"马马虎虎"、"跟上次差不多"
-     suggestion: 顾客主动提出的建议、希望或需求（不是对现有事物的抱怨）
-       识别模式: 建议、希望、能不能加、要是有就好了、以后可以、应该有、想吃X但没有、能不能做X、有没有X（主动询问缺失菜品/设施）
-       示例: "建议加个儿童座椅"、"希望有蜂蜜烤面包"、"你们应该加冷面"、"要是有甜点就好了"
-       注意: suggestion 不是负面评价，是顾客表达期望。
-       "要是能快一点就好了"→ negative（抱怨现有速度），不是 suggestion
-       "建议增加一道冷面"→ suggestion（建议新菜品）
-   - 否定句式需结合上下文判断：
-     "不辣"/"不咸"等：要看顾客是在抱怨还是在回答店长提问
-     顾客主动说"不辣，没味道" → negative（在抱怨）
-     回答店长"辣不辣"说"不辣，挺好的" → neutral 或 positive（在回应提问）
+### 1. sentimentScore — 使用连续值，不要只用固定档位
+反映顾客的整体满意度。**必须使用精确到小数点后两位的连续值**（如0.42、0.58、0.67），不要只输出0.30/0.50/0.60/0.70等整数档。
 
-3. managerQuestions: 店长/服务员说的话（通常是问候或询问）
-4. customerAnswers: 顾客的回复内容
-5. 如果某项为空，返回空数组[]`;
+锚点参考：
+- 0.15: 投诉退菜、强烈不满、要求赔偿
+- 0.25: 多项抱怨、明显失望
+- 0.35: 有具体不满（"太咸"、"等太久"），但整体语气平和
+- 0.45: 顾客应答简短且略带保留，如"还行吧"、"一般般"
+- 0.50: 纯寒暄无实质反馈，或店长单方面说话顾客未回应
+- 0.55: 顾客有回应但态度平淡，如"可以"、"还可以"
+- 0.62: 顾客表达温和满意，如"味道不错"、"挺好的"
+- 0.72: 顾客明确满意且具体夸奖某道菜
+- 0.82: 多次夸赞、表示会再来、推荐给朋友
+- 0.92: 极其热烈的好评、主动要求打好评
+
+**一致性规则（强制）**：
+- feedbacks 全是 positive → sentimentScore 必须 ≥ 0.58
+- feedbacks 有 negative 且无 positive → sentimentScore 必须 ≤ 0.45
+- feedbacks 有 negative 也有 positive → 根据比例在 0.40~0.65 之间
+- feedbacks 全是 neutral → sentimentScore 在 0.48~0.58 之间
+- feedbacks 为空（无法提取） → sentimentScore = 0.50
+
+### 2. feedbacks — 宁多勿漏，但必须有原文依据
+提取顾客对菜品、服务、环境的所有评价。
+
+**兜底规则**：如果对话中顾客有实质性回应（不只是"嗯"/"好"），必须至少提取1条feedback。
+- 顾客说"还行"/"还可以" → 提取为 {"text": "整体还可以", "sentiment": "neutral"}
+- 顾客被问感受后说"好的/没问题" → 提取为 {"text": "用餐体验满意", "sentiment": "positive"}
+- 店长问"有什么建议"顾客说"没有" → 提取为 {"text": "没有意见", "sentiment": "neutral"}
+
+**格式要求**：
+- 每条包含评价对象+评价词（如"五花趾还挺好吃的"而非单独的"好吃"）
+- 没提到具体菜名时用原文表述如"菜品口感还可以"
+- 多个评价拆分成多条
+- 不要编造原文中没有的内容
+- 不要把同一个评价重复提取多次
+
+**sentiment 分类**：
+- positive: 满意、赞赏 — "好吃"、"味道不错"、"服务很好"、"挺好的"、"没有不合口味"
+- negative: 不满、批评 — "太咸了"、"上菜慢"、"有点辣"、"菜有点白"、"品种太少"
+- neutral: 模糊、无倾向 — "还行"、"还可以"、"一般"、"跟上次差不多"
+- suggestion: 建议新增或改变（不是对现有的抱怨）
+  口语化识别模式："X能不能大一点"、"要是有X就好了"、"下次可以加个X"、"分量再多点就好了"、"你们可以出个X"
+  区分：
+  - "分量再多点就好了" → suggestion（建议改进）
+  - "分量太少了" → negative（抱怨现状）
+  - "要是能快一点就好了" → negative（抱怨速度）
+  - "桌子能不能大一点" → suggestion（建议改善设施）
+
+**否定句判断**：
+- 回答店长提问"辣不辣"→"不辣，挺好的" → positive
+- 主动说"不辣，没味道" → negative
+
+### 3. managerQuestions — 店长/服务员的话
+提取问候和询问（不含推销、解释性语句）
+
+### 4. customerAnswers — 顾客的回复
+提取顾客的所有实质性回应
+
+### 5. 空数据处理
+某项为空返回空数组[]
+
+## 参考案例
+
+案例1 — 简短正面：
+输入："你好打扰一下，菜品口感怎么样？还不错啊，有什么建议吗？没有，挺好的，祝你们用餐愉快。"
+输出：{"aiSummary":"顾客对菜品满意，无建议","sentimentScore":0.63,"feedbacks":[{"text":"菜品口感还不错","sentiment":"positive"},{"text":"整体挺好的","sentiment":"positive"}],"managerQuestions":["菜品口感怎么样","有什么建议吗"],"customerAnswers":["还不错","没有，挺好的"]}
+
+案例2 — 有具体不满：
+输入："两位打扰一下，今天菜品怎么样？嗯，那个酸菜鱼有点太辣了不太习惯，还有上菜速度有点慢等了差不多半个小时，其他的都还行，好的我跟厨房反映一下。"
+输出：{"aiSummary":"顾客反馈酸菜鱼太辣、上菜慢","sentimentScore":0.38,"feedbacks":[{"text":"酸菜鱼有点太辣了","sentiment":"negative"},{"text":"上菜速度有点慢","sentiment":"negative"},{"text":"其他菜品还行","sentiment":"neutral"}],"managerQuestions":["今天菜品怎么样"],"customerAnswers":["酸菜鱼有点太辣了不太习惯","上菜速度有点慢等了差不多半个小时","其他的都还行"]}
+
+案例3 — 纯寒暄无反馈：
+输入："你好两位新年快乐，菜品有什么意见吗？噢好谢谢你们的肯定，祝用餐愉快。"
+输出：{"aiSummary":"店长问候，顾客未给具体反馈","sentimentScore":0.50,"feedbacks":[],"managerQuestions":["菜品有什么意见吗"],"customerAnswers":[]}`;
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
@@ -386,7 +493,7 @@ export class AiProcessingService {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `对话文本：\n${transcript}` },
         ],
-        temperature: 0.3,
+        temperature: 0,
         max_tokens: 2000,
       }),
     });
