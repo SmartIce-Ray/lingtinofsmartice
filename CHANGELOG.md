@@ -7,6 +7,21 @@
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-02-27
+
+### 修复 (Fixed)
+- **录音中断恢复** — 电话打断或系统中断录音时，自动保存已录制部分（不再丢失）
+  - 新增 `MediaRecorder.onerror` 处理，捕获录音中断事件
+  - 新增 `AudioContext.onstatechange` 监听，检测 iOS 来电导致的 `interrupted`/`suspended` 状态
+  - 新增 `visibilitychange` 监听，检测应用进入后台后 MediaRecorder 被系统终止
+  - 每秒健康检查：若 MediaRecorder 被系统静默杀掉，自动触发紧急保存
+  - 提取公共 `cleanupResources()` 减少重复代码
+- **AI 智库"正在思考"卡死** — 流式响应中断时前端永久卡在加载状态
+  - 新增 90 秒流式超时：无数据时自动中止请求并显示"回复超时，请重试"
+  - 修复 `[DONE]` 信号检测：增加 `.trim()` 防止尾部空格导致匹配失败
+  - 修复内层 try-catch 吞掉服务端错误：JSON 解析与业务错误分离处理
+  - 超时后显示"当前访问人数较多，请稍后重试"+ 重试按钮
+
 ## [1.9.0] - 2026-02-27
 
 ### 变更 (Changed)

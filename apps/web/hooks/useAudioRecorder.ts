@@ -71,6 +71,8 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   // Throttle waveform updates for smoother animation
   const lastUpdateTimeRef = useRef<number>(0);
   const WAVEFORM_UPDATE_INTERVAL = 50; // Update every 50ms (20fps) instead of every frame (60fps)
+  // Store visibilitychange handler ref for proper cleanup
+  const visibilityHandlerRef = useRef<(() => void) | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -87,8 +89,92 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
+      if (visibilityHandlerRef.current) {
+        document.removeEventListener('visibilitychange', visibilityHandlerRef.current);
+      }
     };
   }, []);
+
+  // --- Interruption recovery helpers ---
+
+  // Shared cleanup: release mic, stop timer/animation, close AudioContext
+  const cleanupResources = useCallback(() => {
+    isRecordingRef.current = false;
+    isPausedRef.current = false;
+    setIsRecording(false);
+    setIsPaused(false);
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    setAnalyserData(null);
+    if (visibilityHandlerRef.current) {
+      document.removeEventListener('visibilitychange', visibilityHandlerRef.current);
+      visibilityHandlerRef.current = null;
+    }
+  }, []);
+
+  // Emergency save: salvage already-recorded chunks when recording is interrupted
+  const emergencySave = useCallback((recorder: MediaRecorder | null) => {
+    if (isStoppingRef.current) return;
+    isStoppingRef.current = true;
+    isRecordingRef.current = false; // Prevent re-entry from health check
+
+    const chunks = audioChunksRef.current;
+
+    // Try normal stop (triggers onstop → blob generation)
+    if (recorder && recorder.state !== 'inactive') {
+      try {
+        recorder.stop();
+        // onstop callback will handle blob + reset isStoppingRef
+        // Safety: if onstop never fires (mobile browser killed recorder), reset after 2s
+        setTimeout(() => { isStoppingRef.current = false; }, 2000);
+      } catch {
+        // stop() failed — manually assemble blob from chunks
+        if (chunks.length > 0) {
+          const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
+          setAudioBlob(blob);
+          setAudioUrl(URL.createObjectURL(blob));
+        }
+        isStoppingRef.current = false;
+      }
+    } else if (chunks.length > 0) {
+      // Recorder already inactive — manually assemble
+      const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' });
+      setAudioBlob(blob);
+      setAudioUrl(URL.createObjectURL(blob));
+      isStoppingRef.current = false;
+    } else {
+      isStoppingRef.current = false;
+    }
+
+    cleanupResources();
+    setError('录音被中断，已保存已录制部分');
+  }, [cleanupResources]);
+
+  // Detect app going to background — if MediaRecorder was silently killed, emergency-save
+  const handleVisibilityChange = useCallback(() => {
+    if (document.hidden && isRecordingRef.current) {
+      console.warn('[useAudioRecorder] App went to background during recording');
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state === 'inactive') {
+        emergencySave(recorder);
+      }
+    }
+  }, [emergencySave]);
 
   // Animation loop for waveform visualization (uses refs to avoid stale closures)
   // Uses getByteTimeDomainData for evenly distributed amplitude data (not frequency)
@@ -141,6 +227,20 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       analyserRef.current.fftSize = 256;
       source.connect(analyserRef.current);
 
+      // iOS: AudioContext enters 'interrupted'/'suspended' on incoming calls
+      audioContextRef.current.addEventListener('statechange', () => {
+        const ctx = audioContextRef.current;
+        if (!ctx) return;
+        if (ctx.state === 'interrupted' || ctx.state === 'suspended') {
+          console.warn(`[useAudioRecorder] AudioContext ${ctx.state}`);
+          if (ctx.state === 'suspended' && isRecordingRef.current) {
+            ctx.resume().catch(() => {
+              emergencySave(mediaRecorderRef.current);
+            });
+          }
+        }
+      });
+
       // Set up MediaRecorder with cross-browser MIME type detection
       const mimeType = getSupportedMimeType();
       // 96kbps balances file size and STT accuracy in noisy restaurant environments
@@ -170,6 +270,12 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
         isStoppingRef.current = false;
       };
 
+      // Catch recording errors (e.g. phone call interruption)
+      mediaRecorder.onerror = (event) => {
+        console.error('[useAudioRecorder] MediaRecorder error:', event);
+        emergencySave(mediaRecorder);
+      };
+
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start(100); // Collect data every 100ms
 
@@ -181,10 +287,21 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       setIsPaused(false);
       startTimeRef.current = Date.now();
 
-      // Start duration timer
+      // Start duration timer + health check
       timerRef.current = setInterval(() => {
         setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+
+        // Health check: detect if MediaRecorder was silently killed by the OS
+        const rec = mediaRecorderRef.current;
+        if (rec && rec.state === 'inactive' && isRecordingRef.current) {
+          console.warn('[useAudioRecorder] MediaRecorder silently stopped');
+          emergencySave(rec);
+        }
       }, 1000);
+
+      // Detect app going to background
+      visibilityHandlerRef.current = handleVisibilityChange;
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
       // Start visualization (now refs are already set)
       startVisualization();
@@ -194,7 +311,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
     } finally {
       isStartingRef.current = false;
     }
-  }, [startVisualization]);
+  }, [startVisualization, emergencySave, handleVisibilityChange]);
 
   const stopRecording = useCallback(() => {
     // Guard against duplicate stops using ref (more reliable than state)
@@ -211,41 +328,12 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
 
     isStoppingRef.current = true;
 
-    // Update refs
-    isRecordingRef.current = false;
-    isPausedRef.current = false;
-
-    // Stop MediaRecorder
+    // Stop MediaRecorder (triggers onstop → blob)
     mediaRecorder.stop();
-    setIsRecording(false);
-    setIsPaused(false);
 
-    // Stop all tracks to release microphone
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
-    // Clear timer
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // Stop animation
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-
-    // Close audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-
-    setAnalyserData(null);
-  }, []);
+    // Release all resources
+    cleanupResources();
+  }, [cleanupResources]);
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording && !isPaused) {

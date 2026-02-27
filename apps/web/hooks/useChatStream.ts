@@ -1,6 +1,6 @@
 // Chat Stream Hook - Handle streaming chat responses with session persistence
+// v3.1 - Streaming timeout + reader error recovery (fixes "正在思考" stuck forever)
 // v3.0 - Added hideUserMessage option, role-based STORAGE_KEY, removed static welcome message
-// v2.4 - Added role_code, user_name, employee_id for role-based prompts and chat history
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getAuthHeaders, useAuth } from '@/contexts/AuthContext';
@@ -144,6 +144,8 @@ export function useChatStream(): UseChatStreamReturn {
       isStreaming: true,
     }]);
 
+    let fullContent = '';
+
     try {
       abortControllerRef.current = new AbortController();
 
@@ -175,40 +177,58 @@ export function useChatStream(): UseChatStreamReturn {
       }
 
       const decoder = new TextDecoder();
-      let fullContent = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Streaming timeout: if no data for 90s, abort
+      const STREAM_TIMEOUT_MS = 90_000;
+      let streamTimer = setTimeout(() => {
+        abortControllerRef.current?.abort();
+      }, STREAM_TIMEOUT_MS);
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+      const resetStreamTimer = () => {
+        clearTimeout(streamTimer);
+        streamTimer = setTimeout(() => {
+          abortControllerRef.current?.abort();
+        }, STREAM_TIMEOUT_MS);
+      };
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-            if (data === '[DONE]') {
-              setMessages(prev => prev.map(msg =>
-                msg.id === assistantMessageId
-                  ? { ...msg, isStreaming: false }
-                  : msg
-              ));
-              continue;
-            }
+          resetStreamTimer();
 
-            try {
-              const parsed = JSON.parse(data);
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+
+              if (data === '[DONE]') {
+                setMessages(prev => prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, isStreaming: false }
+                    : msg
+                ));
+                continue;
+              }
+
+              let parsed: { type: string; content?: string; tool?: string };
+              try {
+                parsed = JSON.parse(data);
+              } catch {
+                // Skip invalid JSON lines
+                continue;
+              }
 
               if (parsed.type === 'thinking') {
-                // Update thinking status (shown while AI is processing)
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMessageId
                     ? { ...msg, thinkingStatus: parsed.content }
                     : msg
                 ));
               } else if (parsed.type === 'tool_use') {
-                // Tool is being used, show status
                 const toolName = parsed.tool === 'query_database' ? '查询数据库' : parsed.tool;
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMessageId
@@ -216,7 +236,6 @@ export function useChatStream(): UseChatStreamReturn {
                     : msg
                 ));
               } else if (parsed.type === 'text') {
-                // Clear thinking status when actual content arrives
                 fullContent += parsed.content;
                 setMessages(prev => prev.map(msg =>
                   msg.id === assistantMessageId
@@ -226,14 +245,33 @@ export function useChatStream(): UseChatStreamReturn {
               } else if (parsed.type === 'error') {
                 throw new Error(parsed.content);
               }
-            } catch (e) {
-              // Skip invalid JSON lines
             }
           }
         }
+      } finally {
+        clearTimeout(streamTimer);
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
+        // Distinguish user-initiated stop (abortControllerRef already null) from timeout
+        if (abortControllerRef.current === null) {
+          // User pressed stop — handled by stopRequest()
+          return;
+        }
+        // Timeout — show friendly message with retry
+        const timeoutMsg = '当前访问人数较多，请稍后重试';
+        setError(timeoutMsg);
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: `抱歉，${timeoutMsg}`,
+                isStreaming: false,
+                isError: true,
+                originalQuestion: content,
+              }
+            : msg
+        ));
         return;
       }
 
