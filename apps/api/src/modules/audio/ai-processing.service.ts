@@ -149,6 +149,134 @@ export class AiProcessingService {
   }
 
   /**
+   * Re-analyze a single processed record: skip STT, re-run clean + AI + save.
+   * Returns result object instead of throwing, so batch caller can continue on failure.
+   * Does NOT set status to 'error' on failure (record stays 'processed').
+   */
+  async reanalyzeRecord(
+    recordingId: string,
+  ): Promise<{ success: boolean; aiSummary?: string; error?: string }> {
+    if (this.processingLocks.has(recordingId)) {
+      return { success: false, error: 'Already being processed (locked)' };
+    }
+
+    this.processingLocks.add(recordingId);
+    try {
+      const client = this.supabase.getClient();
+      const { data, error } = await client
+        .from('lingtin_visit_records')
+        .select('raw_transcript')
+        .eq('id', recordingId)
+        .single();
+
+      if (error || !data?.raw_transcript) {
+        return { success: false, error: `No raw_transcript: ${error?.message || 'empty'}` };
+      }
+
+      const rawTranscript: string = data.raw_transcript;
+
+      // Empty transcript — skip AI, just update processed_at
+      if (!rawTranscript.trim()) {
+        await this.saveResults(recordingId, {
+          rawTranscript,
+          correctedTranscript: '',
+          aiSummary: '无法识别语音内容',
+          sentimentScore: 0.5,
+          feedbacks: [],
+          managerQuestions: [],
+          customerAnswers: [],
+        });
+        return { success: true, aiSummary: '无法识别语音内容' };
+      }
+
+      const cleanedTranscript = this.cleanTranscript(rawTranscript);
+
+      if (!cleanedTranscript.trim()) {
+        await this.saveResults(recordingId, {
+          rawTranscript,
+          correctedTranscript: rawTranscript,
+          aiSummary: '语音内容无有效信息',
+          sentimentScore: 0.5,
+          feedbacks: [],
+          managerQuestions: [],
+          customerAnswers: [],
+        });
+        return { success: true, aiSummary: '语音内容无有效信息' };
+      }
+
+      const aiResult = await this.processWithGemini(cleanedTranscript);
+      aiResult.correctedTranscript = rawTranscript;
+
+      await this.saveResults(recordingId, { rawTranscript, ...aiResult });
+      this.logger.log(`Reanalyzed ${recordingId}: ${aiResult.aiSummary}`);
+      return { success: true, aiSummary: aiResult.aiSummary };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Reanalyze failed ${recordingId}: ${msg}`);
+      return { success: false, error: msg };
+    } finally {
+      this.processingLocks.delete(recordingId);
+    }
+  }
+
+  /**
+   * Batch re-analyze processed records whose processed_at < cutoffDate.
+   * Processes sequentially with 500ms delay between records to avoid rate limits.
+   */
+  async reanalyzeBatch(
+    limit: number,
+    cutoffDate: string,
+  ): Promise<{
+    total: number;
+    processed: number;
+    failed: number;
+    errors: { id: string; error: string }[];
+  }> {
+    const client = this.supabase.getClient();
+    const { data: records, error } = await client
+      .from('lingtin_visit_records')
+      .select('id')
+      .eq('status', 'processed')
+      .not('raw_transcript', 'is', null)
+      .lt('processed_at', cutoffDate)
+      .order('processed_at', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      this.logger.error(`Batch query failed: ${error.message}`);
+      return { total: 0, processed: 0, failed: 0, errors: [{ id: 'query', error: error.message }] };
+    }
+
+    const total = records?.length || 0;
+    if (total === 0) {
+      return { total: 0, processed: 0, failed: 0, errors: [] };
+    }
+
+    this.logger.log(`Reanalyze batch: ${total} records (cutoff: ${cutoffDate})`);
+
+    let processed = 0;
+    let failed = 0;
+    const errors: { id: string; error: string }[] = [];
+
+    for (let i = 0; i < records.length; i++) {
+      const result = await this.reanalyzeRecord(records[i].id);
+      if (result.success) {
+        processed++;
+      } else {
+        failed++;
+        errors.push({ id: records[i].id, error: result.error || 'Unknown' });
+      }
+      // Rate limit: 500ms between records
+      if (i < records.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    this.logger.log(`Reanalyze batch done: ${processed} ok, ${failed} failed out of ${total}`);
+    return { total, processed, failed, errors };
+  }
+
+  /**
    * Get current status of a recording from database
    */
   private async getRecordingStatus(recordingId: string): Promise<string | null> {

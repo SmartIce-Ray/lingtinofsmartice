@@ -175,4 +175,29 @@ export class AudioController {
     this.logger.log(`◀ Status updated to ${status}`);
     return { success: true };
   }
+
+  // POST /api/audio/reanalyze-batch - Re-run AI analysis on historical records (skip STT)
+  // Note: with large limits, this can run for several minutes. Keep limit ≤ 20 for production use.
+  @Post('reanalyze-batch')
+  async reanalyzeBatch(
+    @Body('limit') limit?: number,
+    @Body('cutoff_date') cutoffDate?: string,
+  ) {
+    if (cutoffDate && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?Z?)?$/.test(cutoffDate)) {
+      throw new BadRequestException('cutoff_date must be a valid ISO date string');
+    }
+    const batchLimit = Math.min(Math.max(limit || 20, 1), 100);
+    const cutoff = cutoffDate || new Date().toISOString();
+
+    this.logger.log(`▶ POST /audio/reanalyze-batch (limit=${batchLimit}, cutoff=${cutoff})`);
+
+    const result = await this.aiProcessingService.reanalyzeBatch(batchLimit, cutoff);
+
+    this.logger.log(`◀ Reanalyze batch: ${result.processed}/${result.total} ok, ${result.failed} failed`);
+
+    return {
+      data: result,
+      message: `Reanalyzed ${result.processed}/${result.total} records (${result.failed} failed)`,
+    };
+  }
 }

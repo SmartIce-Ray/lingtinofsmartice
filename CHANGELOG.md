@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-02-27
+
+### 新增 (Added)
+- 历史数据批量重分析端点 `POST /api/audio/reanalyze-batch` — 用 Prompt V2 重跑历史桌访的 AI 分析，跳过 STT（节省费用）
+  - 幂等机制：按 `processed_at < cutoff_date` 筛选，处理后自动更新 `processed_at`
+  - 安全机制：失败不改 status（记录保持 `processed`），用 `processingLocks` 防止并发冲突
+  - 限流：每条记录间隔 500ms，单批最大 100 条
+
 ## [1.8.2] - 2026-02-27
 
 ### 修复 (Fixed)
