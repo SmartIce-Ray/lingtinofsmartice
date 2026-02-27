@@ -26,9 +26,9 @@ export function RecordButton({
   const handleClick = useCallback(() => {
     if (disabled) return;
 
-    // Debounce: ignore clicks within 300ms of last click
+    // Debounce: ignore clicks within 100ms of last click
     const now = Date.now();
-    if (now - lastClickRef.current < 300) {
+    if (now - lastClickRef.current < 100) {
       console.log('[RecordButton] Ignoring rapid click');
       return;
     }
@@ -59,6 +59,7 @@ export function RecordButton({
         <button
           onClick={handleClick}
           disabled={disabled}
+          style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
           className={`relative w-28 h-28 rounded-full flex items-center justify-center shadow-lg transition-all duration-200 ${
             isRecording
               ? 'bg-primary-700 scale-110'

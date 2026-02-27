@@ -84,7 +84,7 @@ const MANAGER_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析�
 数据字段说明：
 - totalVisits: 昨日桌访总数
 - negVisits: 昨日差评桌访（table_id, feedbacks, ai_summary）
-- posDishes: 昨日好评菜品（dish_name, feedback_text）
+- posDishes: 昨日好评反馈（feedback_text）
 - pendingActions: 未处理行动建议数量
 
 **汇报格式（严格遵循）：**
@@ -187,7 +187,7 @@ const BOSS_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助�
 数据字段说明：
 - visits: 各门店昨日桌访量（restaurant_name, total）
 - negStores: 异常门店，差评集中（restaurant_name, neg_count）
-- negDishes: 跨店共性差评菜品（dish_name, mention_count）
+- negDishes: 跨店共性差评反馈（feedback_text, mention_count, restaurant_name）
 - pendingItems: 行动建议积压（restaurant_name, pending_count）
 
 **汇报格式（严格遵循）：**
@@ -282,8 +282,8 @@ const CHEF_SYSTEM_PROMPT = `你是灵听，一个专业的厨房运营助手。�
 当你收到带有 [每日汇报数据] 标签的消息时，根据其中提供的数据生成每日智能汇报。数据已由系统预查询，你不需要调用任何工具，直接组织和呈现即可。
 
 数据字段说明：
-- negDishes: 昨日菜品差评（dish_name, feedback_text, table_id）
-- posDishes: 昨日菜品好评（dish_name, feedback_text）
+- negDishes: 昨日菜品差评（table_id, feedback_text）
+- posDishes: 昨日菜品好评（feedback_text）
 - pendingTasks: 厨房待办（cnt, priority）
 
 **汇报格式（严格遵循）：**
@@ -702,25 +702,28 @@ this.logger.log(`Executing tool: ${name}`);
           SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as total
           FROM lingtin_visit_records vr
           JOIN master_restaurant mr ON vr.restaurant_id = mr.id
-          WHERE vr.visit_date = CURRENT_DATE - 1 ${scopeFor('vr')}
+          WHERE vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 ${scopeFor('vr')}
           GROUP BY vr.restaurant_id, mr.restaurant_name
         `),
         this.runRawQuery(`
           SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as neg_count
           FROM lingtin_visit_records vr
           JOIN master_restaurant mr ON vr.restaurant_id = mr.id
-          WHERE vr.visit_date = CURRENT_DATE - 1 AND vr.sentiment_score < 0.4 ${scopeFor('vr')}
+          WHERE vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 AND vr.sentiment_score < 0.4 ${scopeFor('vr')}
           GROUP BY vr.restaurant_id, mr.restaurant_name
           ORDER BY neg_count DESC LIMIT 3
         `),
         this.runRawQuery(`
-          SELECT dm.dish_name, COUNT(DISTINCT dm.visit_id) as mention_count
-          FROM lingtin_dish_mentions dm
-          JOIN lingtin_visit_records vr ON dm.visit_id = vr.id
-          WHERE dm.sentiment = 'negative' AND dm.created_at >= CURRENT_DATE - 1 ${scopeFor('vr')}
-          GROUP BY dm.dish_name
-          HAVING COUNT(DISTINCT dm.visit_id) >= 2
-          ORDER BY mention_count DESC LIMIT 3
+          SELECT f->>'text' as feedback_text, COUNT(*) as mention_count,
+                 mr.restaurant_name
+          FROM lingtin_visit_records vr
+          JOIN master_restaurant mr ON vr.restaurant_id = mr.id,
+               jsonb_array_elements(vr.feedbacks) f
+          WHERE vr.feedbacks IS NOT NULL
+            AND vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1
+            AND f->>'sentiment' = 'negative' ${scopeFor('vr')}
+          GROUP BY f->>'text', mr.restaurant_name
+          ORDER BY mention_count DESC LIMIT 5
         `),
         this.runRawQuery(`
           SELECT ai.restaurant_id, mr.restaurant_name, COUNT(*) as pending_count
@@ -738,17 +741,21 @@ this.logger.log(`Executing tool: ${name}`);
     } else if (isChef) {
       const [negDishes, posDishes, pendingTasks] = await Promise.all([
         this.runRawQuery(`
-          SELECT dm.dish_name, dm.feedback_text, vr.table_id
-          FROM lingtin_dish_mentions dm
-          JOIN lingtin_visit_records vr ON dm.visit_id = vr.id
-          WHERE dm.sentiment = 'negative' AND dm.created_at >= CURRENT_DATE - 1 ${scopeFor('vr')}
-          ORDER BY dm.created_at DESC LIMIT 10
+          SELECT vr.table_id, f->>'text' as feedback_text
+          FROM lingtin_visit_records vr,
+               jsonb_array_elements(vr.feedbacks) f
+          WHERE vr.feedbacks IS NOT NULL
+            AND vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1
+            AND f->>'sentiment' = 'negative' ${scopeFor('vr')}
+          ORDER BY vr.created_at DESC LIMIT 10
         `),
         this.runRawQuery(`
-          SELECT dm.dish_name, dm.feedback_text
-          FROM lingtin_dish_mentions dm
-          JOIN lingtin_visit_records vr ON dm.visit_id = vr.id
-          WHERE dm.sentiment = 'positive' AND dm.created_at >= CURRENT_DATE - 1 ${scopeFor('vr')}
+          SELECT f->>'text' as feedback_text
+          FROM lingtin_visit_records vr,
+               jsonb_array_elements(vr.feedbacks) f
+          WHERE vr.feedbacks IS NOT NULL
+            AND vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1
+            AND f->>'sentiment' = 'positive' ${scopeFor('vr')}
           LIMIT 5
         `),
         this.runRawQuery(`
@@ -767,19 +774,21 @@ this.logger.log(`Executing tool: ${name}`);
         this.runRawQuery(`
           SELECT COUNT(*) as total
           FROM lingtin_visit_records
-          WHERE visit_date = CURRENT_DATE - 1 ${scopeFor()}
+          WHERE visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 ${scopeFor()}
         `),
         this.runRawQuery(`
           SELECT table_id, feedbacks, ai_summary
           FROM lingtin_visit_records
-          WHERE visit_date = CURRENT_DATE - 1 AND sentiment_score < 0.4 ${scopeFor()}
+          WHERE visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 AND sentiment_score < 0.4 ${scopeFor()}
           LIMIT 5
         `),
         this.runRawQuery(`
-          SELECT dm.dish_name, dm.feedback_text
-          FROM lingtin_dish_mentions dm
-          JOIN lingtin_visit_records vr ON dm.visit_id = vr.id
-          WHERE dm.sentiment = 'positive' AND dm.created_at >= CURRENT_DATE - 1 ${scopeFor('vr')}
+          SELECT f->>'text' as feedback_text
+          FROM lingtin_visit_records vr,
+               jsonb_array_elements(vr.feedbacks) f
+          WHERE vr.feedbacks IS NOT NULL
+            AND vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1
+            AND f->>'sentiment' = 'positive' ${scopeFor('vr')}
           LIMIT 5
         `),
         this.runRawQuery(`

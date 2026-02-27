@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-02-27
+
+### 修复 (Fixed)
+- 录音按钮防抖从 300ms 降至 100ms，修复 PWA 模式下无法正常取消录音的问题
+- 录音按钮添加 `touch-action: manipulation`，消除 iOS Safari 的 300ms 触摸延迟
+- 厨师长/管理层/店长每日汇报菜品数据为空——从废弃的 `dish_mentions` 表迁移到 `visit_records.feedbacks` JSONB
+- 汇报 SQL 时区修复——`CURRENT_DATE` 改为 `(CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date`，避免凌晨时段查错日期
+
 ## [1.8.1] - 2026-02-27
 
 ### 变更 (Changed)
