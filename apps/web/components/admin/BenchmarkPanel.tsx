@@ -15,6 +15,7 @@ interface BenchmarkResponse {
   comparison: {
     sentiment: ComparisonMetric;
     coverage: ComparisonMetric;
+    reviewCompletion: ComparisonMetric;
     actionCompletionRate: ComparisonMetric;
   };
   alerts: Array<{
@@ -111,12 +112,18 @@ export function BenchmarkPanel({ managedIdsParam }: BenchmarkPanelProps) {
       {/* Benchmark comparison */}
       <div>
         <div className="text-sm font-medium text-gray-700 px-1 mb-2">基准对比（近 7 天）</div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <ComparisonCard
             label="满意度"
             mine={Math.round(comparison.sentiment.mine)}
             company={Math.round(comparison.sentiment.company)}
             unit="分"
+          />
+          <ComparisonCard
+            label="复盘完成率"
+            mine={Math.round(comparison.reviewCompletion.mine)}
+            company={Math.round(comparison.reviewCompletion.company)}
+            unit="%"
           />
           <ComparisonCard
             label="覆盖率"
@@ -125,7 +132,7 @@ export function BenchmarkPanel({ managedIdsParam }: BenchmarkPanelProps) {
             unit="%"
           />
           <ComparisonCard
-            label="完成率"
+            label="待办完成率"
             mine={comparison.actionCompletionRate.mine}
             company={comparison.actionCompletionRate.company}
             unit="%"

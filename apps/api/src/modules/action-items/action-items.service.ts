@@ -234,7 +234,7 @@ export class ActionItemsService {
   }
 
   // Update action item status
-  async updateActionItem(id: string, status: string, note?: string) {
+  async updateActionItem(id: string, status: string, note?: string, responseNote?: string) {
     if (this.supabase.isMockMode()) {
       return { action: { id, status, updated_at: new Date().toISOString() } };
     }
@@ -250,9 +250,11 @@ export class ActionItemsService {
     } else if (status === 'resolved') {
       updateData.resolved_at = new Date().toISOString();
       if (note) updateData.resolved_note = note;
+      if (responseNote) updateData.response_note = responseNote;
     } else if (status === 'dismissed') {
       updateData.dismissed_at = new Date().toISOString();
       if (note) updateData.dismiss_reason = note;
+      if (responseNote) updateData.response_note = responseNote;
     }
 
     const { data, error } = await client

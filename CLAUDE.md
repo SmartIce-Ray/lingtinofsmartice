@@ -214,6 +214,7 @@ master_employee (1)   ──< visit_records (N)
 
 | 任务 | 分支 | 状态 | 关键笔记 |
 |------|------|------|----------|
+| v1.8.1 AI 分析质量优化 | feat/ai-analysis-v2 | ✅ 已合并 | PR #29。Prompt V2（连续值情绪分+一致性约束+兜底提取+few-shot）+ temperature 0 + 增量去重。analysis/ 目录含完整审查数据（已 gitignore） |
 | v1.7.1 日期范围选择器 | feat/date-range-picker | ✅ 已合并 | PR #16 已 merge。DateRange 类型 + 日历范围选择 UX + 8 个 API 端点支持 start_date/end_date + 预设（近7天/近30天）|
 | v1.7.0 门店区域分组 | feat/date-range-picker | ✅ 已合并 | PR #16 含区域编辑内联修复。master_region 表 + 4 个初始区域 + RegionModule 8 端点 + 前端区域管理页 |
 | v1.6.0 区域管理层支持 | feat/date-range-picker | ✅ 已合并 | 认证+6个API端点+前端全部适配 |

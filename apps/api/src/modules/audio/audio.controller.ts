@@ -1,5 +1,5 @@
 // Audio Controller - API endpoints for recording
-// v3.7 - Accept duration_seconds from upload FormData
+// v3.8 - Added: POST /quick-transcribe for voice-to-text (chef response notes)
 
 import {
   Controller,
@@ -20,6 +20,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { AudioService } from './audio.service';
 import { AiProcessingService } from './ai-processing.service';
+import { DashScopeSttService } from './dashscope-stt.service';
+import { XunfeiSttService } from './xunfei-stt.service';
+import { SupabaseService } from '../../common/supabase/supabase.service';
 
 // Multer config: 10MB max file size, memory storage
 const multerOptions = {
@@ -36,6 +39,9 @@ export class AudioController {
   constructor(
     private readonly audioService: AudioService,
     private readonly aiProcessingService: AiProcessingService,
+    private readonly dashScopeStt: DashScopeSttService,
+    private readonly xunfeiStt: XunfeiSttService,
+    private readonly supabaseService: SupabaseService,
   ) {}
 
   // POST /api/audio/upload
@@ -174,6 +180,71 @@ export class AudioController {
     await this.audioService.updateRecordingStatus(visitId, status, errorMessage);
     this.logger.log(`◀ Status updated to ${status}`);
     return { success: true };
+  }
+
+  // POST /api/audio/quick-transcribe - Voice-to-text for short recordings (chef response notes)
+  // Upload audio blob → temp storage → STT → return text → delete temp file
+  @Post('quick-transcribe')
+  @UseInterceptors(FileInterceptor('file', multerOptions))
+  async quickTranscribe(
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    this.logger.log(`▶ POST /audio/quick-transcribe`);
+
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    const allowedMimes = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/mp4'];
+    if (!file.mimetype || !allowedMimes.includes(file.mimetype)) {
+      throw new BadRequestException('Only audio files are accepted');
+    }
+
+    this.logger.log(`  File: ${file.originalname} (${file.size} bytes, ${file.mimetype})`);
+
+    const client = this.supabaseService.getClient();
+    const tempPath = `temp/quick-transcribe/${Date.now()}_${Math.random().toString(36).slice(2)}.webm`;
+
+    // Upload to temp storage
+    const { error: uploadError } = await client.storage
+      .from('lingtin')
+      .upload(tempPath, file.buffer, {
+        contentType: file.mimetype || 'audio/webm',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      this.logger.error(`Temp upload failed: ${uploadError.message}`);
+      throw new BadRequestException('Failed to upload audio');
+    }
+
+    try {
+      // Get public URL for STT
+      const { data: urlData } = client.storage.from('lingtin').getPublicUrl(tempPath);
+      const audioUrl = urlData.publicUrl;
+
+      // Run STT: DashScope → 讯飞 fallback
+      let transcript = '';
+      if (this.dashScopeStt.isConfigured()) {
+        try {
+          transcript = await this.dashScopeStt.transcribe(audioUrl, 1, 30000);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`DashScope quick-transcribe failed, trying 讯飞: ${msg}`);
+        }
+      }
+      if (!transcript) {
+        transcript = await this.xunfeiStt.transcribe(audioUrl, 30000);
+      }
+
+      this.logger.log(`◀ Quick-transcribe done: ${transcript.length} chars`);
+      return { transcript };
+    } finally {
+      // Clean up temp file
+      await client.storage.from('lingtin').remove([tempPath]).catch((e) =>
+        this.logger.warn(`Failed to delete temp file ${tempPath}: ${e instanceof Error ? e.message : e}`),
+      );
+    }
   }
 
   // POST /api/audio/reanalyze-batch - Re-run AI analysis on historical records (skip STT)

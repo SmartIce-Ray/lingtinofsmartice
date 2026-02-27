@@ -47,7 +47,7 @@ export class DashboardController {
     return this.dashboardService.getRestaurantsOverview(range.start, range.end, managedIds);
   }
 
-  // GET /api/dashboard/coverage
+  // GET /api/dashboard/coverage - Also returns review_completion + streak
   @Get('coverage')
   async getCoverage(
     @Query('restaurant_id') restaurantId: string,
@@ -58,12 +58,28 @@ export class DashboardController {
   ) {
     const managedIds = DashboardService.parseManagedIds(managedIdsStr);
     const range = resolveRange(date, startDate, endDate);
-    return this.dashboardService.getCoverageStats(
+    const coverageStats = await this.dashboardService.getCoverageStats(
       restaurantId,
       range.start,
       range.end,
       managedIds,
     );
+
+    // Add review completion data for single-restaurant mode
+    if (restaurantId !== 'all') {
+      try {
+        const reviewStats = await this.dashboardService.getReviewCompletionStats(
+          restaurantId,
+          range.start,
+          range.end,
+        );
+        return { ...coverageStats, review_completion: reviewStats };
+      } catch {
+        return { ...coverageStats, review_completion: null };
+      }
+    }
+
+    return coverageStats;
   }
 
   // GET /api/dashboard/dish-ranking

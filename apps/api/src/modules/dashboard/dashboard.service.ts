@@ -1,4 +1,5 @@
 // Dashboard Service - Analytics business logic
+// v2.3 - Added: getReviewCompletionStats() + getMultiRestaurantReviewCompletion() for review completion tracking
 // v2.2 - Added: getBriefing() for admin daily briefing (cross-restaurant anomaly detection)
 // v2.1 - Added: getRestaurantDetail() for restaurant detail page
 // v2.0 - Added: getRestaurantsOverview() for admin dashboard with sentiment scores
@@ -35,7 +36,7 @@ export interface NegContext {
 // Severity for briefing problem cards
 type BriefingSeverity = 'red' | 'yellow';
 // Category icons for briefing
-type BriefingCategory = 'dish_quality' | 'service_speed' | 'staff_attitude' | 'environment' | 'coverage' | 'sentiment' | 'no_visits' | 'action_overdue';
+type BriefingCategory = 'dish_quality' | 'service_speed' | 'staff_attitude' | 'environment' | 'coverage' | 'review_completion' | 'sentiment' | 'no_visits' | 'action_overdue';
 
 export interface BriefingProblem {
   severity: BriefingSeverity;
@@ -86,6 +87,76 @@ export class DashboardService {
     }
     const restaurants = await this.getVisibleRestaurants(managedIds);
     return { restaurants };
+  }
+
+  // Get review completion stats: how many days with visits also have daily_review meetings
+  async getReviewCompletionStats(restaurantId: string, startDate: string, endDate: string) {
+    if (this.supabase.isMockMode()) {
+      return { total_days: 10, reviewed_days: 8, completion_rate: 80, streak: 5 };
+    }
+    const client = this.supabase.getClient();
+
+    // Days with completed visit records
+    const { data: visitDays, error: ve } = await client
+      .from('lingtin_visit_records')
+      .select('visit_date')
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'processed')
+      .gte('visit_date', startDate)
+      .lte('visit_date', endDate);
+    if (ve) throw ve;
+
+    const uniqueVisitDates = [...new Set((visitDays || []).map(v => v.visit_date))].sort();
+
+    // Days with daily_review meetings
+    const { data: meetingDays, error: me } = await client
+      .from('lingtin_meeting_records')
+      .select('meeting_date')
+      .eq('restaurant_id', restaurantId)
+      .eq('meeting_type', 'daily_review')
+      .gte('meeting_date', startDate)
+      .lte('meeting_date', endDate);
+    if (me) throw me;
+
+    const reviewedDatesSet = new Set((meetingDays || []).map(m => m.meeting_date));
+
+    const totalDays = uniqueVisitDates.length;
+    const reviewedDays = uniqueVisitDates.filter(d => reviewedDatesSet.has(d)).length;
+    const completionRate = totalDays > 0 ? Math.round((reviewedDays / totalDays) * 100) : 0;
+
+    // Calculate streak: count consecutive reviewed days working backwards from the range end (or today, whichever is earlier)
+    let streak = 0;
+    const today = getChinaDateString();
+    const loopStart = today < endDate ? today : endDate;
+    const allVisitDatesSet = new Set(uniqueVisitDates);
+    for (let d = new Date(loopStart + 'T00:00:00+08:00'); ; d.setDate(d.getDate() - 1)) {
+      const dateStr = toChinaDateString(d);
+      if (dateStr < startDate) break;
+      if (dateStr > endDate) continue; // skip days past range end
+      if (!allVisitDatesSet.has(dateStr)) continue; // skip days without visits
+      if (reviewedDatesSet.has(dateStr)) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return { total_days: totalDays, reviewed_days: reviewedDays, completion_rate: completionRate, streak };
+  }
+
+  // Multi-restaurant review completion
+  async getMultiRestaurantReviewCompletion(startDate: string, endDate: string, managedIds: string[] | null = null) {
+    const restaurants = await this.getVisibleRestaurants(managedIds);
+    const results = await Promise.all(
+      restaurants.map(async (r) => {
+        const stats = await this.getReviewCompletionStats(r.id, startDate, endDate);
+        return { id: r.id, name: r.restaurant_name, ...stats };
+      }),
+    );
+    const totalRate = results.length > 0
+      ? Math.round(results.reduce((sum, r) => sum + r.completion_rate, 0) / results.length)
+      : 0;
+    return { avg_completion_rate: totalRate, restaurants: results };
   }
 
   // Get coverage statistics (visits vs table sessions)
@@ -643,8 +714,47 @@ export class DashboardService {
       };
     });
 
+    // Enrich with review completion + latest review meeting per restaurant
+    const enrichedStats = await Promise.all(
+      restaurantStats.map(async (stat) => {
+        // Review completion for the date range
+        let reviewCompletion = 0;
+        try {
+          const rc = await this.getReviewCompletionStats(stat.id, startDate, endDate);
+          reviewCompletion = rc.completion_rate;
+        } catch {
+          /* ignore */
+        }
+
+        // Latest daily_review meeting
+        let latestReview: { ai_summary: string; action_items: string[]; key_decisions: string[] } | null = null;
+        try {
+          const { data: meetings } = await client
+            .from('lingtin_meeting_records')
+            .select('ai_summary, action_items, key_decisions')
+            .eq('restaurant_id', stat.id)
+            .eq('meeting_type', 'daily_review')
+            .gte('meeting_date', startDate)
+            .lte('meeting_date', endDate)
+            .order('meeting_date', { ascending: false })
+            .limit(1);
+          if (meetings && meetings.length > 0) {
+            latestReview = {
+              ai_summary: meetings[0].ai_summary || '',
+              action_items: meetings[0].action_items || [],
+              key_decisions: meetings[0].key_decisions || [],
+            };
+          }
+        } catch {
+          /* ignore */
+        }
+
+        return { ...stat, review_completion: reviewCompletion, latest_review: latestReview };
+      }),
+    );
+
     // Sort by visit count descending
-    restaurantStats.sort((a, b) => b.visit_count - a.visit_count);
+    enrichedStats.sort((a, b) => b.visit_count - a.visit_count);
 
     return {
       summary: {
@@ -654,7 +764,7 @@ export class DashboardService {
           : null,
         restaurant_count: restaurants?.length || 0,
       },
-      restaurants: restaurantStats,
+      restaurants: enrichedStats,
       recent_keywords: allKeywords.slice(0, 10),
     };
   }
@@ -800,6 +910,7 @@ export class DashboardService {
         restaurant_count: 3,
         avg_sentiment: 68,
         avg_coverage: 78,
+        avg_review_completion: 65,
       };
     }
 
@@ -808,7 +919,7 @@ export class DashboardService {
     // 1. Get visible restaurants (scoped or all)
     const restaurants = await this.getVisibleRestaurants(managedIds);
     if (restaurants.length === 0) {
-      return { date: startDate, greeting: this.getGreeting(), problems: [], healthy_count: 0, restaurant_count: 0, avg_sentiment: null, avg_coverage: 0 };
+      return { date: startDate, greeting: this.getGreeting(), problems: [], healthy_count: 0, restaurant_count: 0, avg_sentiment: null, avg_coverage: 0, avg_review_completion: 0 };
     }
 
     const restMap = new Map(restaurants.map(r => [r.id, r.restaurant_name]));
@@ -910,9 +1021,8 @@ export class DashboardService {
         });
       }
 
-      // --- Anomaly: low coverage ---
+      // --- Anomaly: low coverage (kept for when table_sessions has data) ---
       if (openCount > 0 && coverage < 70) {
-        // Check if yesterday was higher
         const yesterdayCount = restYesterdayVisits.length;
         const diffText = yesterdayCount > visitCount
           ? `昨日 ${yesterdayCount} 条，今日 ${visitCount} 条`
@@ -926,6 +1036,24 @@ export class DashboardService {
           evidence: [],
           metric: diffText,
         });
+      }
+
+      // --- Anomaly: low review completion (< 50%) ---
+      try {
+        const rc = await this.getReviewCompletionStats(rest.id, startDate, endDate);
+        if (rc.total_days > 0 && rc.completion_rate < 50) {
+          problems.push({
+            severity: rc.completion_rate < 30 ? 'red' : 'yellow',
+            category: 'review_completion',
+            restaurantId: rest.id,
+            restaurantName: rest.restaurant_name,
+            title: '复盘执行不足',
+            evidence: [],
+            metric: `复盘完成率 ${rc.completion_rate}%（${rc.reviewed_days}/${rc.total_days}天）`,
+          });
+        }
+      } catch {
+        /* ignore review completion errors */
       }
 
       // --- Anomaly: negative feedbacks by category ---
@@ -960,11 +1088,11 @@ export class DashboardService {
             service_speed: '上菜速度投诉',
             staff_attitude: '服务态度问题',
             environment: '环境问题',
-            coverage: '', sentiment: '', no_visits: '', action_overdue: '',
+            coverage: '', review_completion: '', sentiment: '', no_visits: '', action_overdue: '',
           };
           const catIcons: Record<BriefingCategory, string> = {
             dish_quality: '🍳', service_speed: '⏱️', staff_attitude: '😐', environment: '🏠',
-            coverage: '', sentiment: '', no_visits: '', action_overdue: '',
+            coverage: '', review_completion: '', sentiment: '', no_visits: '', action_overdue: '',
           };
           problems.push({
             severity: items.length >= 3 ? 'red' : 'yellow',
@@ -1009,6 +1137,15 @@ export class DashboardService {
       : null;
     const overallCoverage = totalOpen > 0 ? Math.round((totalVisit / totalOpen) * 100) : 0;
 
+    // Compute avg review completion across all restaurants
+    let avgReviewCompletion = 0;
+    try {
+      const rc = await this.getMultiRestaurantReviewCompletion(startDate, endDate, managedIds);
+      avgReviewCompletion = rc.avg_completion_rate;
+    } catch {
+      /* ignore */
+    }
+
     return {
       date: startDate,
       greeting: this.getGreeting(),
@@ -1017,6 +1154,7 @@ export class DashboardService {
       restaurant_count: restaurants.length,
       avg_sentiment: overallAvgSentiment,
       avg_coverage: overallCoverage,
+      avg_review_completion: avgReviewCompletion,
     };
   }
 
@@ -1212,8 +1350,8 @@ export class DashboardService {
     const managedRest = allRest.filter(r => managedIds.includes(r.id));
     const restNameMap = new Map(allRest.map(r => [r.id, r.restaurant_name]));
 
-    // Fetch data in parallel: visits, sessions, action items for the period
-    const [allVisitsRes, allSessionsRes, allActionsRes] = await Promise.all([
+    // Fetch data in parallel: visits, sessions, action items, meetings for the period
+    const [allVisitsRes, allSessionsRes, allActionsRes, allMeetingsRes] = await Promise.all([
       client.from('lingtin_visit_records')
         .select('restaurant_id, visit_date, sentiment_score')
         .gte('visit_date', startStr)
@@ -1226,17 +1364,24 @@ export class DashboardService {
       client.from('lingtin_action_items')
         .select('id, restaurant_id, status, priority, created_at')
         .in('status', ['pending', 'acknowledged', 'resolved']),
+      client.from('lingtin_meeting_records')
+        .select('restaurant_id, meeting_date')
+        .eq('meeting_type', 'daily_review')
+        .gte('meeting_date', startStr)
+        .lte('meeting_date', endStr),
     ]);
 
     const allVisits = allVisitsRes.data || [];
     const allSessions = allSessionsRes.data || [];
     const allActions = allActionsRes.data || [];
+    const allMeetings = allMeetingsRes.data || [];
 
     // --- Comparison: my region vs company ---
     const calcMetrics = (restIds: string[]) => {
       const visits = allVisits.filter(v => restIds.includes(v.restaurant_id));
       const sessions = allSessions.filter(s => restIds.includes(s.restaurant_id));
       const actions = allActions.filter(a => restIds.includes(a.restaurant_id));
+      const meetings = allMeetings.filter(m => restIds.includes(m.restaurant_id));
 
       const scores = visits.filter(v => v.sentiment_score !== null).map(v => v.sentiment_score);
       const avgSentiment = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
@@ -1245,7 +1390,13 @@ export class DashboardService {
       const resolved = actions.filter(a => a.status === 'resolved').length;
       const completionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
 
-      return { sentiment: Math.round(avgSentiment * 100) / 100, coverage, actionCompletionRate: completionRate };
+      // Review completion: days with visits that also have a daily_review meeting
+      const visitDates = [...new Set(visits.map(v => v.visit_date))];
+      const meetingDates = new Set(meetings.map(m => m.meeting_date));
+      const reviewedDays = visitDates.filter(d => meetingDates.has(d)).length;
+      const reviewCompletion = visitDates.length > 0 ? Math.round((reviewedDays / visitDates.length) * 100) : 0;
+
+      return { sentiment: Math.round(avgSentiment * 100) / 100, coverage, actionCompletionRate: completionRate, reviewCompletion };
     };
 
     const myIds = managedIds;
@@ -1377,6 +1528,7 @@ export class DashboardService {
       comparison: {
         sentiment: { mine: mine.sentiment, company: company.sentiment },
         coverage: { mine: mine.coverage, company: company.coverage },
+        reviewCompletion: { mine: mine.reviewCompletion, company: company.reviewCompletion },
         actionCompletionRate: { mine: mine.actionCompletionRate, company: company.actionCompletionRate },
       },
       alerts,

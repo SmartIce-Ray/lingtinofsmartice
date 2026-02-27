@@ -21,6 +21,7 @@ export interface ActionItem {
   acknowledged_at?: string;
   resolved_at?: string;
   resolved_note?: string;
+  response_note?: string;
 }
 
 export interface ActionItemsResponse {

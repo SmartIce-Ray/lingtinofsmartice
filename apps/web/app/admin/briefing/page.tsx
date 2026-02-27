@@ -1,6 +1,5 @@
-// Admin Overview Page - Merged briefing + dashboard
-// v2.1 - Added: regional manager support (managed scope + benchmark panel)
-// v2.0 - Combined: problem cards + metrics row + keywords + store grid
+// Admin Overview Page - Collapsible store list with embedded problems + review data
+// v3.0 - Redesign: fold problem cards into per-store collapsible rows, coverage → review completion
 
 'use client';
 
@@ -42,6 +41,7 @@ interface BriefingResponse {
   restaurant_count: number;
   avg_sentiment: number | null;
   avg_coverage: number;
+  avg_review_completion?: number;
 }
 
 interface RestaurantOverview {
@@ -52,6 +52,12 @@ interface RestaurantOverview {
   coverage: number;
   avg_sentiment: number | null;
   keywords: string[];
+  review_completion?: number;
+  latest_review?: {
+    ai_summary: string;
+    action_items: string[];
+    key_decisions: string[];
+  } | null;
 }
 
 interface OverviewResponse {
@@ -64,38 +70,11 @@ interface OverviewResponse {
   recent_keywords: string[];
 }
 
-// Category icon map
-const CATEGORY_ICONS: Record<string, string> = {
-  dish_quality: '🍳',
-  service_speed: '⏱️',
-  staff_attitude: '😐',
-  environment: '🏠',
-  coverage: '📉',
-  sentiment: '😟',
-  no_visits: '⚠️',
-  action_overdue: '📋',
-};
-
-// Keyword sentiment
-const POSITIVE_KEYWORDS = ['好吃', '超好吃', '很好吃', '服务好', '服务热情', '环境好', '环境不错', '干净', '新鲜', '分量足', '实惠', '会再来', '推荐朋友', '肉质好', '火候刚好', '味道好', '蘸料好', '烤肉香', '小菜好吃'];
-const NEGATIVE_KEYWORDS = ['偏咸', '太咸', '太油', '上菜慢', '服务差', '服务一般', '态度不好', '不新鲜', '退菜', '空调冷', '等位久', '一般般', '还行'];
-
-function getKeywordStyle(keyword: string): string {
-  if (POSITIVE_KEYWORDS.some(pk => keyword.includes(pk))) return 'bg-green-50 text-green-600';
-  if (NEGATIVE_KEYWORDS.some(nk => keyword.includes(nk))) return 'bg-red-50 text-red-600';
-  return 'bg-gray-100 text-gray-600';
-}
-
 function getSatisfactionDisplay(score: number | null): { color: string; bg: string; label: string } {
   if (score === null) return { color: 'text-gray-400', bg: 'bg-gray-100', label: '暂无' };
   if (score >= 70) return { color: 'text-green-600', bg: 'bg-green-100', label: '满意' };
   if (score >= 50) return { color: 'text-yellow-600', bg: 'bg-yellow-100', label: '一般' };
   return { color: 'text-red-600', bg: 'bg-red-100', label: '不满意' };
-}
-
-function formatSatisfaction(score: number | null): string {
-  if (score === null) return '--';
-  return `${Math.round(score)}`;
 }
 
 export default function AdminBriefingPage() {
@@ -135,6 +114,22 @@ export default function AdminBriefingPage() {
     [playingKey, stopAudio],
   );
 
+  // Expanded store IDs
+  const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
+  const toggleStore = (id: string) => {
+    setExpandedStores(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        // Stop audio when collapsing a store row
+        stopAudio();
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   // Fetch briefing data (scoped by managed restaurants)
   const { data, isLoading } = useSWR<BriefingResponse>(`/api/dashboard/briefing?${dateRangeParams(dateRange)}${managedIdsParam}`);
   // Fetch overview data (keywords + store grid)
@@ -143,14 +138,31 @@ export default function AdminBriefingPage() {
   const userName = user?.employeeName || user?.username || '您';
   const greeting = data?.greeting || '您好';
   const problems = data?.problems || [];
-  const healthyCount = data?.healthy_count ?? 0;
   const restaurantCount = data?.restaurant_count ?? 0;
   const avgSentiment = data?.avg_sentiment;
-  const avgCoverage = data?.avg_coverage ?? 0;
+  const avgReviewCompletion = data?.avg_review_completion ?? 0;
 
   const summary = overviewData?.summary;
   const restaurants = overviewData?.restaurants || [];
-  const recentKeywords = overviewData?.recent_keywords || [];
+
+  // Group problems by restaurant
+  const problemsByRestaurant = new Map<string, BriefingProblem[]>();
+  for (const p of problems) {
+    const existing = problemsByRestaurant.get(p.restaurantId) || [];
+    existing.push(p);
+    problemsByRestaurant.set(p.restaurantId, existing);
+  }
+
+  // Build sorted store list: by problem severity + count, then sentiment
+  const sortedRestaurants = [...restaurants].sort((a, b) => {
+    const aProblems = problemsByRestaurant.get(a.id) || [];
+    const bProblems = problemsByRestaurant.get(b.id) || [];
+    const aRedCount = aProblems.filter(p => p.severity === 'red').length;
+    const bRedCount = bProblems.filter(p => p.severity === 'red').length;
+    if (aRedCount !== bRedCount) return bRedCount - aRedCount;
+    if (aProblems.length !== bProblems.length) return bProblems.length - aProblems.length;
+    return (a.avg_sentiment ?? 100) - (b.avg_sentiment ?? 100);
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -215,9 +227,14 @@ export default function AdminBriefingPage() {
               </div>
             </div>
             <div className="bg-white rounded-xl p-3 text-center">
-              <div className="text-xs text-gray-500 mb-0.5">覆盖率</div>
-              <div className="text-xl font-bold text-gray-900">
-                {avgCoverage > 0 ? `${avgCoverage}%` : '--'}
+              <div className="text-xs text-gray-500 mb-0.5">复盘完成率</div>
+              <div className={`text-xl font-bold ${
+                avgReviewCompletion >= 80 ? 'text-green-600' :
+                avgReviewCompletion >= 50 ? 'text-yellow-600' :
+                avgReviewCompletion >= 0 && data?.avg_review_completion != null ? 'text-red-600' :
+                'text-gray-400'
+              }`}>
+                {data?.avg_review_completion != null ? `${Math.round(avgReviewCompletion)}%` : '--'}
               </div>
               <div className="text-xs text-gray-400">&nbsp;</div>
             </div>
@@ -237,120 +254,143 @@ export default function AdminBriefingPage() {
           </div>
         )}
 
-        {/* Problem cards */}
-        {!isLoading && problems.length > 0 && (
-          <div className="space-y-3">
-            {problems.map((problem, idx) => (
-              <ProblemCard
-                key={`${problem.restaurantId}-${problem.category}-${idx}`}
-                problem={problem}
-                playingKey={playingKey}
-                onAudioToggle={handleAudioToggle}
-                onNavigate={(restId) => router.push(`/admin/restaurant-detail?id=${restId}`)}
-              />
-            ))}
+        {/* Collapsible store list */}
+        {!isLoading && sortedRestaurants.length > 0 && (
+          <div className="space-y-2">
+            {sortedRestaurants.map((rest) => {
+              const restProblems = problemsByRestaurant.get(rest.id) || [];
+              const hasRed = restProblems.some(p => p.severity === 'red');
+              const hasYellow = restProblems.some(p => p.severity === 'yellow');
+              const isExpanded = expandedStores.has(rest.id);
+              const sentiment = getSatisfactionDisplay(rest.avg_sentiment);
+              const hasReviewed = rest.review_completion != null && rest.review_completion > 0;
+              const reviewIcon = hasReviewed ? '✓' : '✗';
+
+              return (
+                <div key={rest.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                  {/* Store summary row — tappable */}
+                  <div
+                    className="px-4 py-3 flex items-center gap-3 cursor-pointer active:bg-gray-50 transition-colors"
+                    onClick={() => toggleStore(rest.id)}
+                  >
+                    {/* Status dot */}
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      hasRed ? 'bg-red-500' : hasYellow ? 'bg-amber-400' : 'bg-green-500'
+                    }`} />
+
+                    {/* Store info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900 truncate">{rest.name}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>{rest.visit_count}次桌访</span>
+                        <span>·</span>
+                        <span className={sentiment.color}>{rest.avg_sentiment != null ? `${Math.round(rest.avg_sentiment)}分` : '--'}</span>
+                        <span>·</span>
+                        <span className={hasReviewed ? 'text-green-600' : 'text-red-500'}>复盘{reviewIcon}</span>
+                        {restProblems.length > 0 && (
+                          <>
+                            <span>·</span>
+                            <span className="text-red-600">{restProblems.length}个问题</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expand chevron */}
+                    <svg
+                      className={`w-5 h-5 text-gray-300 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+                      {/* Problems section */}
+                      {restProblems.length > 0 && (
+                        <div className="space-y-3">
+                          {restProblems.map((problem, idx) => (
+                            <ProblemCard
+                              key={`${problem.category}-${idx}`}
+                              problem={problem}
+                              playingKey={playingKey}
+                              onAudioToggle={handleAudioToggle}
+                              compact
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Review record section */}
+                      {rest.latest_review ? (
+                        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span className="text-xs font-medium text-blue-700">最近复盘记录</span>
+                          </div>
+                          {rest.latest_review.ai_summary && (
+                            <p className="text-sm text-gray-700 leading-relaxed">{rest.latest_review.ai_summary}</p>
+                          )}
+                          {rest.latest_review.action_items && rest.latest_review.action_items.length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-[10px] text-gray-400 mb-1">行动事项</div>
+                              <ul className="space-y-1">
+                                {rest.latest_review.action_items.map((item: string, i: number) => (
+                                  <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                                    <span className="text-blue-400 mt-0.5">·</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {rest.latest_review.key_decisions && rest.latest_review.key_decisions.length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-[10px] text-gray-400 mb-1">关键决定</div>
+                              <ul className="space-y-1">
+                                {rest.latest_review.key_decisions.map((d: string, i: number) => (
+                                  <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                                    <span className="text-green-400 mt-0.5">·</span>
+                                    <span>{d}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-2 text-xs text-gray-400">
+                          该门店尚未录制复盘会议
+                        </div>
+                      )}
+
+                      {/* Navigate to detail */}
+                      <button
+                        onClick={() => router.push(`/admin/restaurant-detail?id=${rest.id}`)}
+                        className="w-full text-center text-xs text-primary-600 hover:text-primary-700 py-3 transition-colors"
+                      >
+                        查看详情 &rsaquo;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* Empty state - all healthy */}
-        {!isLoading && problems.length === 0 && restaurantCount > 0 && (
+        {!isLoading && sortedRestaurants.length === 0 && restaurantCount > 0 && (
           <div className="bg-white rounded-xl p-6 text-center">
             <div className="text-4xl mb-3">✅</div>
             <h3 className="text-lg font-semibold text-gray-900 mb-1">一切正常</h3>
             <p className="text-sm text-gray-500">
               {restaurantCount} 家门店均运营良好
             </p>
-            {avgSentiment != null && (
-              <p className="text-sm text-gray-400 mt-1">
-                平均满意度 {Math.round(avgSentiment)} · 平均覆盖率 {avgCoverage}%
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Healthy restaurants summary */}
-        {!isLoading && problems.length > 0 && healthyCount > 0 && (
-          <div className="bg-white rounded-xl p-4">
-            <div className="flex items-center gap-2 text-green-600 mb-1">
-              <span>✅</span>
-              <span className="font-medium">其余 {healthyCount} 家门店运营正常</span>
-            </div>
-            {avgSentiment != null && (
-              <p className="text-sm text-gray-400 ml-6">
-                平均满意度 {Math.round(avgSentiment)} · 平均覆盖率 {avgCoverage}%
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Today's keywords (from dashboard) */}
-        {recentKeywords.length > 0 && (
-          <div className="bg-white rounded-xl p-4">
-            <div className="text-xs text-gray-500 mb-2">关键词</div>
-            <div className="flex flex-wrap gap-2">
-              {recentKeywords.map((kw, idx) => (
-                <span
-                  key={idx}
-                  className={`px-2.5 py-1 rounded-full text-xs ${getKeywordStyle(kw)}`}
-                >
-                  {kw}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Store grid (from dashboard) */}
-        {restaurants.length > 0 && (
-          <div>
-            <div className="text-sm font-medium text-gray-700 px-1 mb-3">门店概况</div>
-            <div className="grid grid-cols-2 gap-3">
-              {restaurants.map((rest) => {
-                const sentiment = getSatisfactionDisplay(rest.avg_sentiment);
-                return (
-                  <div
-                    key={rest.id}
-                    className="bg-white rounded-xl p-3 active:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => router.push(`/admin/restaurant-detail?id=${rest.id}`)}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 truncate">{rest.name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {rest.visit_count} 次桌访
-                          {rest.open_count > 0 && ` · ${rest.coverage}%`}
-                        </div>
-                      </div>
-                      <div className={`px-2 py-1 rounded-lg ${sentiment.bg} ml-1 flex-shrink-0`}>
-                        <div className={`text-sm font-bold ${sentiment.color} text-center`}>
-                          {formatSatisfaction(rest.avg_sentiment)}
-                        </div>
-                        <div className={`text-[10px] ${sentiment.color} text-center`}>
-                          {sentiment.label}
-                        </div>
-                      </div>
-                    </div>
-
-                    {rest.keywords.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {rest.keywords.slice(0, 4).map((kw, idx) => (
-                          <span
-                            key={idx}
-                            className={`px-1.5 py-0.5 rounded text-[10px] ${getKeywordStyle(kw)}`}
-                          >
-                            {kw}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {rest.keywords.length === 0 && rest.visit_count === 0 && (
-                      <div className="text-xs text-gray-400">暂无桌访</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -392,48 +432,40 @@ function QAConversation({ questions, answers }: { questions: string[]; answers: 
   );
 }
 
-// --- Problem Card Component ---
+// --- Problem Card Component (also used in-line within store rows) ---
 function ProblemCard({
   problem,
   playingKey,
   onAudioToggle,
-  onNavigate,
+  compact,
 }: {
   problem: BriefingProblem;
   playingKey: string | null;
   onAudioToggle: (key: string, url: string) => void;
-  onNavigate: (restaurantId: string) => void;
+  compact?: boolean;
 }) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const severityColor = problem.severity === 'red' ? 'bg-red-500' : 'bg-amber-400';
+  const severityBg = problem.severity === 'red' ? 'bg-red-50/50 border-red-100' : 'bg-amber-50/50 border-amber-100';
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div className={`rounded-xl overflow-hidden ${compact ? `border ${severityBg}` : 'bg-white shadow-sm'}`}>
       {/* Header */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <span className={`w-1.5 h-1.5 rounded-full ${severityColor} flex-shrink-0`} />
-            <span className="text-xs text-gray-400">{problem.restaurantName}</span>
-          </div>
-          <button
-            onClick={() => onNavigate(problem.restaurantId)}
-            className="text-xs text-gray-400 hover:text-primary-600 transition-colors"
-          >
-            详情 &rsaquo;
-          </button>
+      <div className={`px-3 pt-3 pb-1.5`}>
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${severityColor} flex-shrink-0`} />
+          <h3 className="text-sm font-semibold text-gray-900 leading-snug">
+            {problem.title}
+          </h3>
         </div>
-        <h3 className="text-[15px] font-semibold text-gray-900 leading-snug">
-          {problem.title}
-        </h3>
         {problem.metric && (
-          <p className="text-xs text-gray-400 mt-0.5">{problem.metric}</p>
+          <p className="text-xs text-gray-400 ml-3.5">{problem.metric}</p>
         )}
       </div>
 
       {/* Evidence list */}
       {problem.evidence.length > 0 && (
-        <div className="px-2 pb-2">
+        <div className="px-1.5 pb-2">
           {problem.evidence.map((ev, i) => {
             const isExpanded = expandedIdx === i;
             const hasQA = (ev.managerQuestions?.length ?? 0) > 0 || (ev.customerAnswers?.length ?? 0) > 0;
@@ -441,18 +473,16 @@ function ProblemCard({
             return (
               <div
                 key={i}
-                className={`mx-0 rounded-xl transition-colors ${isExpanded ? 'bg-gray-50' : ''}`}
+                className={`mx-0 rounded-lg transition-colors ${isExpanded ? 'bg-white/60' : ''}`}
               >
-                {/* Evidence row — tappable */}
+                {/* Evidence row */}
                 <div
-                  className={`flex items-center gap-2.5 px-3 py-2.5 ${hasQA ? 'cursor-pointer active:bg-gray-50' : ''}`}
+                  className={`flex items-center gap-2 px-2.5 py-2 ${hasQA ? 'cursor-pointer' : ''}`}
                   onClick={() => hasQA && setExpandedIdx(isExpanded ? null : i)}
                 >
-                  {/* Quote */}
                   <p className="text-sm text-gray-700 flex-1 leading-relaxed">
                     &ldquo;{ev.text}&rdquo;
                   </p>
-                  {/* Right side controls */}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                       {ev.tableId}
@@ -486,7 +516,7 @@ function ProblemCard({
 
                 {/* Expanded Q&A */}
                 {isExpanded && (
-                  <div className="px-3 pb-3 pt-0">
+                  <div className="px-2.5 pb-2.5 pt-0">
                     <div className="border-l-2 border-primary-200 pl-3 py-1.5">
                       <QAConversation
                         questions={ev.managerQuestions || []}

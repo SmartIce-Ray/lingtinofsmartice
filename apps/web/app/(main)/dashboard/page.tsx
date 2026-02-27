@@ -70,9 +70,17 @@ interface SuggestionsResponse {
   suggestions: SuggestionItem[];
 }
 
+interface ReviewCompletion {
+  total_days: number;
+  reviewed_days: number;
+  completion_rate: number;
+  streak: number;
+}
+
 // Response types for SWR
 interface CoverageResponse {
   periods: CoveragePeriod[];
+  review_completion?: ReviewCompletion | null;
 }
 
 interface HighlightsResponse {
@@ -241,11 +249,22 @@ export default function DashboardPage() {
     restaurantId ? `/api/dashboard/suggestions?restaurant_id=${restaurantId}&days=7` : null
   );
 
+  // Kitchen action items (dish_quality category) — use endDate for single-day, today for range
+  const kitchenActionsDate = dateRange.startDate === dateRange.endDate ? dateRange.endDate : getChinaToday();
+  const kitchenActionsParams = restaurantId
+    ? `restaurant_id=${restaurantId}&date=${kitchenActionsDate}`
+    : null;
+  const { data: kitchenActionsData } = useSWR<{ actions: { id: string; category: string; suggestion_text: string; status: string; response_note?: string | null; priority: string }[] }>(
+    kitchenActionsParams ? `/api/action-items?${kitchenActionsParams}` : null
+  );
+
   // Derived data with defaults
   const coverage = coverageData ?? { periods: [] };
+  const reviewCompletion = coverageData?.review_completion;
   const sentiment = sentimentData ?? null;
   const managerQuestions = highlightsData?.questions ?? [];
   const suggestions = suggestionsData?.suggestions ?? [];
+  const kitchenActions = (kitchenActionsData?.actions ?? []).filter(a => a.category === 'dish_quality');
   const loading = coverageLoading || sentimentLoading || highlightsLoading;
 
   // Close popover when clicking outside
@@ -282,63 +301,50 @@ export default function DashboardPage() {
           <div className="text-center py-8 text-gray-500">加载中...</div>
         )}
 
-        {/* Coverage Table */}
+        {/* Execution Data Card */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">执行覆盖率</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 border-b border-gray-100">
-                  <th className="text-left py-2 font-medium">时段</th>
-                  <th className="text-center py-2 font-medium">开台</th>
-                  <th className="text-center py-2 font-medium">桌访</th>
-                  <th className="text-center py-2 font-medium">覆盖率</th>
-                  <th className="text-right py-2 font-medium">状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coverage.periods.length === 0 && !loading && (
-                  <tr>
-                    <td colSpan={5} className="text-center py-4 text-gray-400">
-                      暂无数据
-                    </td>
-                  </tr>
-                )}
-                {coverage.periods.map((row) => (
-                  <tr key={row.period} className="border-b border-gray-50">
-                    <td className="py-3 font-medium">
-                      {row.period === 'lunch' ? '午市' : '晚市'}
-                    </td>
-                    <td className="text-center text-gray-600">{row.open_count}</td>
-                    <td className="text-center text-gray-600">{row.visit_count}</td>
-                    <td className="text-center">
-                      <span
-                        className={`font-medium ${
-                          row.status === 'good'
-                            ? 'text-green-600'
-                            : row.status === 'warning'
-                              ? 'text-yellow-600'
-                              : 'text-red-600'
-                        }`}
-                      >
-                        {row.coverage}%
-                      </span>
-                    </td>
-                    <td className="text-right">
-                      {row.status === 'good' ? (
-                        <span className="text-green-600">✓ 正常</span>
-                      ) : row.open_count > row.visit_count ? (
-                        <span className="text-yellow-600">
-                          ⚠ -{row.open_count - row.visit_count}桌
-                        </span>
-                      ) : (
-                        <span className="text-green-600">✓ 正常</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <h2 className="text-sm font-medium text-gray-700 mb-3">执行数据</h2>
+          <div className="grid grid-cols-3 gap-3">
+            {/* Visit counts by period */}
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">桌访</div>
+              <div className="text-xl font-bold text-gray-900">
+                {coverage.periods.reduce((sum, p) => sum + p.visit_count, 0)}
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {coverage.periods.map(p =>
+                  `${p.period === 'lunch' ? '午' : '晚'}${p.visit_count}`
+                ).join(' · ') || '--'}
+              </div>
+            </div>
+            {/* Review completion rate */}
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">复盘</div>
+              <div className={`text-xl font-bold ${
+                !reviewCompletion ? 'text-gray-400' :
+                reviewCompletion.completion_rate >= 80 ? 'text-green-600' :
+                reviewCompletion.completion_rate >= 50 ? 'text-yellow-600' :
+                'text-red-600'
+              }`}>
+                {reviewCompletion ? `${reviewCompletion.completion_rate}%` : '--'}
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {reviewCompletion ? `${reviewCompletion.reviewed_days}/${reviewCompletion.total_days}天` : '--'}
+              </div>
+            </div>
+            {/* Streak */}
+            <div className="text-center">
+              <div className="text-xs text-gray-500 mb-1">连续复盘</div>
+              <div className={`text-xl font-bold ${
+                !reviewCompletion ? 'text-gray-400' :
+                reviewCompletion.streak >= 5 ? 'text-green-600' :
+                reviewCompletion.streak >= 3 ? 'text-yellow-600' :
+                'text-gray-600'
+              }`}>
+                {reviewCompletion ? `${reviewCompletion.streak}天` : '--'}
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">&nbsp;</div>
+            </div>
           </div>
         </div>
 
@@ -510,6 +516,52 @@ export default function DashboardPage() {
             <div className="text-center py-4 text-gray-400 text-sm">暂无数据</div>
           ) : null}
         </div>
+
+        {/* Kitchen Response Section */}
+        {kitchenActions.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <h2 className="text-sm font-medium text-gray-700 mb-3">厨房响应</h2>
+            <div className="space-y-3">
+              {kitchenActions.map((item) => {
+                const isResolved = item.status === 'resolved';
+                const isDismissed = item.status === 'dismissed';
+                return (
+                  <div key={item.id} className={`rounded-xl p-3 ${
+                    isResolved ? 'bg-green-50 border border-green-100' :
+                    isDismissed ? 'bg-gray-50 border border-gray-100' :
+                    'bg-red-50/50 border border-red-100'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        isResolved ? 'bg-green-500' :
+                        isDismissed ? 'bg-gray-400' :
+                        'bg-red-500'
+                      }`} />
+                      <span className={`text-xs font-medium ${
+                        isResolved ? 'text-green-700' :
+                        isDismissed ? 'text-gray-500' :
+                        'text-red-700'
+                      }`}>
+                        {isResolved ? '已处理' : isDismissed ? '已忽略' : '待处理'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-700">{item.suggestion_text}</p>
+                    {item.response_note && (
+                      <div className="mt-1.5 text-xs text-green-700 bg-green-50 rounded px-2 py-1">
+                        厨师长: {item.response_note}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {kitchenActions.filter(a => a.status === 'pending' || a.status === 'acknowledged').length > 0 && (
+              <div className="mt-2 text-xs text-gray-400 text-center">
+                {kitchenActions.filter(a => a.status === 'pending' || a.status === 'acknowledged').length} 个菜品问题待厨师长处理
+              </div>
+            )}
+          </div>
+        )}
 
         {/* AI Action Items */}
         {restaurantId && (
