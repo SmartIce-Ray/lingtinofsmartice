@@ -328,14 +328,14 @@ export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: C
                 </div>
                 {hasNeg && (
                   <div>
-                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">差评</span></div>
+                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">不满意</span></div>
                     {rest.negative_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'neg', keyPrefix, idx))}
                   </div>
                 )}
                 {hasNeg && hasPos && <div className="mx-4 border-t border-gray-100" />}
                 {hasPos && (
                   <div>
-                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">好评</span></div>
+                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">满意</span></div>
                     {rest.positive_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'pos', keyPrefix, idx))}
                   </div>
                 )}
@@ -352,7 +352,7 @@ export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: C
           {negativeFeedbacks.length > 0 && (
             <div>
               <div className="px-4 pt-4 pb-2">
-                <span className="text-sm font-semibold text-gray-900">高频差评</span>
+                <span className="text-sm font-semibold text-gray-900">不满意反馈</span>
               </div>
               {negativeFeedbacks.slice(0, 6).map((fb, idx) => {
                 const fbKey = `neg-${idx}`;
@@ -426,7 +426,7 @@ export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: C
           {positiveFeedbacks.length > 0 && (
             <div>
               <div className="px-4 pt-4 pb-2">
-                <span className="text-sm font-semibold text-gray-900">高频好评</span>
+                <span className="text-sm font-semibold text-gray-900">值得保持</span>
               </div>
               {positiveFeedbacks.slice(0, 6).map((fb, idx) => {
                 const fbKey = `pos-${idx}`;

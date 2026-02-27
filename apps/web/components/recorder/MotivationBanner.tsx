@@ -112,7 +112,7 @@ export function MotivationBanner({ restaurantId, userName }: MotivationBannerPro
         <div className="flex items-center gap-4 mt-2.5">
           <StatItem value={data.total_visits} label="次桌访" />
           <div className="w-px h-6 bg-gray-200" />
-          <StatItem value={data.positive_count} label="位好评" />
+          <StatItem value={data.positive_count} label="次满意" />
           <div className="w-px h-6 bg-gray-200" />
           <StatItem value={data.resolved_issues} label="已改善" />
         </div>

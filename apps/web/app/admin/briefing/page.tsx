@@ -86,16 +86,16 @@ function getKeywordStyle(keyword: string): string {
   return 'bg-gray-100 text-gray-600';
 }
 
-function getSentimentDisplay(score: number | null): { color: string; bg: string; label: string } {
+function getSatisfactionDisplay(score: number | null): { color: string; bg: string; label: string } {
   if (score === null) return { color: 'text-gray-400', bg: 'bg-gray-100', label: '暂无' };
-  if (score >= 0.7) return { color: 'text-green-600', bg: 'bg-green-100', label: '优秀' };
-  if (score >= 0.5) return { color: 'text-yellow-600', bg: 'bg-yellow-100', label: '一般' };
-  return { color: 'text-red-600', bg: 'bg-red-100', label: '需关注' };
+  if (score >= 70) return { color: 'text-green-600', bg: 'bg-green-100', label: '满意' };
+  if (score >= 50) return { color: 'text-yellow-600', bg: 'bg-yellow-100', label: '一般' };
+  return { color: 'text-red-600', bg: 'bg-red-100', label: '不满意' };
 }
 
-function formatSentiment(score: number | null): string {
+function formatSatisfaction(score: number | null): string {
   if (score === null) return '--';
-  return `${Math.round(score * 100)}`;
+  return `${Math.round(score)}`;
 }
 
 export default function AdminBriefingPage() {
@@ -206,12 +206,12 @@ export default function AdminBriefingPage() {
               </div>
             </div>
             <div className="bg-white rounded-xl p-3 text-center">
-              <div className="text-xs text-gray-500 mb-0.5">情绪</div>
-              <div className={`text-xl font-bold ${getSentimentDisplay(avgSentiment ?? null).color}`}>
-                {avgSentiment != null ? `${Math.round(avgSentiment * 100)}分` : '--'}
+              <div className="text-xs text-gray-500 mb-0.5">满意度</div>
+              <div className={`text-xl font-bold ${getSatisfactionDisplay(avgSentiment ?? null).color}`}>
+                {avgSentiment != null ? `${Math.round(avgSentiment)}分` : '--'}
               </div>
               <div className="text-xs text-gray-400">
-                {getSentimentDisplay(avgSentiment ?? null).label}
+                {getSatisfactionDisplay(avgSentiment ?? null).label}
               </div>
             </div>
             <div className="bg-white rounded-xl p-3 text-center">
@@ -262,7 +262,7 @@ export default function AdminBriefingPage() {
             </p>
             {avgSentiment != null && (
               <p className="text-sm text-gray-400 mt-1">
-                平均情绪 {avgSentiment.toFixed(2)} · 平均覆盖率 {avgCoverage}%
+                平均满意度 {Math.round(avgSentiment)} · 平均覆盖率 {avgCoverage}%
               </p>
             )}
           </div>
@@ -277,7 +277,7 @@ export default function AdminBriefingPage() {
             </div>
             {avgSentiment != null && (
               <p className="text-sm text-gray-400 ml-6">
-                平均情绪 {avgSentiment.toFixed(2)} · 平均覆盖率 {avgCoverage}%
+                平均满意度 {Math.round(avgSentiment)} · 平均覆盖率 {avgCoverage}%
               </p>
             )}
           </div>
@@ -306,7 +306,7 @@ export default function AdminBriefingPage() {
             <div className="text-sm font-medium text-gray-700 px-1 mb-3">门店概况</div>
             <div className="grid grid-cols-2 gap-3">
               {restaurants.map((rest) => {
-                const sentiment = getSentimentDisplay(rest.avg_sentiment);
+                const sentiment = getSatisfactionDisplay(rest.avg_sentiment);
                 return (
                   <div
                     key={rest.id}
@@ -323,7 +323,7 @@ export default function AdminBriefingPage() {
                       </div>
                       <div className={`px-2 py-1 rounded-lg ${sentiment.bg} ml-1 flex-shrink-0`}>
                         <div className={`text-sm font-bold ${sentiment.color} text-center`}>
-                          {formatSentiment(rest.avg_sentiment)}
+                          {formatSatisfaction(rest.avg_sentiment)}
                         </div>
                         <div className={`text-[10px] ${sentiment.color} text-center`}>
                           {sentiment.label}

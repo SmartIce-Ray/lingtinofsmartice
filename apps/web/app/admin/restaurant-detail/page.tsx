@@ -43,11 +43,11 @@ function getKeywordStyle(keyword: string): string {
   return 'bg-gray-100 text-gray-600';
 }
 
-function getSentimentDisplay(score: number | null): { color: string; bg: string; label: string } {
+function getSatisfactionDisplay(score: number | null): { color: string; bg: string; label: string } {
   if (score === null) return { color: 'text-gray-400', bg: 'bg-gray-100', label: '暂无' };
-  if (score >= 0.7) return { color: 'text-green-600', bg: 'bg-green-100', label: '好评' };
-  if (score >= 0.5) return { color: 'text-yellow-600', bg: 'bg-yellow-100', label: '中评' };
-  return { color: 'text-red-600', bg: 'bg-red-100', label: '差评' };
+  if (score >= 70) return { color: 'text-green-600', bg: 'bg-green-100', label: '满意' };
+  if (score >= 50) return { color: 'text-yellow-600', bg: 'bg-yellow-100', label: '一般' };
+  return { color: 'text-red-600', bg: 'bg-red-100', label: '不满意' };
 }
 
 function formatTime(dateString: string): string {
@@ -121,7 +121,7 @@ function RestaurantDetailContent() {
         {/* Visit Records - responsive grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {visits.map((visit) => {
-            const sentiment = getSentimentDisplay(visit.sentiment_score);
+            const sentiment = getSatisfactionDisplay(visit.sentiment_score);
             const isExpanded = expandedId === visit.id;
             return (
               <div
@@ -151,7 +151,7 @@ function RestaurantDetailContent() {
                   <div className="flex items-center gap-2">
                     <div className={`px-2.5 py-1 rounded-full ${sentiment.bg} flex-shrink-0`}>
                       <span className={`text-xs font-medium ${sentiment.color}`}>
-                        {visit.sentiment_score !== null ? Math.round(visit.sentiment_score * 100) : '--'}
+                        {visit.sentiment_score !== null ? Math.round(visit.sentiment_score) : '--'}
                         <span className="ml-0.5">{sentiment.label}</span>
                       </span>
                     </div>

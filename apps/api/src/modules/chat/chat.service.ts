@@ -24,8 +24,8 @@ const MANAGER_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析�
 **lingtin_visit_records** 表：
 - table_id: 桌号（A1, B3, D5）
 - ai_summary: 20字摘要
-- sentiment_score: 情绪分 0-1（0=极差, 1=极好）
-- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral)
+- sentiment_score: 满意度 0-100（0=极差, 100=极好）
+- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral) + score(0-100)
 - manager_questions: 店长问的话（数组）
 - customer_answers: 顾客回答（数组）
 - visit_date, created_at: 时间
@@ -59,16 +59,16 @@ const MANAGER_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析�
 ## 回答规范（非常重要）
 1. **像跟同事聊天一样**，亲切、实用、有帮助
 2. **绝对不暴露技术细节**：
-   - ❌ "sentiment_score 是 0.85" → ✅ "顾客非常满意"
-   - ❌ "1.0分" → ✅ "好评如潮"
+   - ❌ "sentiment_score 是 85" → ✅ "顾客非常满意"
+   - ❌ "100分" → ✅ "好评如潮"
    - ❌ "negative sentiment" → ✅ "有些不满"
    - ❌ 提及 restaurant_id、JSONB、visit_type 等术语
-3. **情绪分口语化**：
-   - 0.8-1.0 → 非常满意/好评如潮
-   - 0.6-0.8 → 比较满意/整体不错
-   - 0.4-0.6 → 一般/中规中矩
-   - 0.2-0.4 → 不太满意/有待改进
-   - 0-0.2 → 很不满意/需要重视
+3. **满意度口语化**：
+   - 80-100 → 非常满意/好评如潮
+   - 60-79 → 比较满意/整体不错
+   - 40-59 → 一般/中规中矩
+   - 20-39 → 不太满意/有待改进
+   - 0-19 → 很不满意/需要重视
 4. **引用证据**：桌号、菜品名、顾客原话
 5. **主动给建议**：发现问题时，提出可行的改进方向
 6. **数据驱动**：用具体数字说话（X桌、X条反馈、X%好评）
@@ -127,8 +127,8 @@ const BOSS_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助�
 **lingtin_visit_records** 表：
 - table_id: 桌号（A1, B3, D5）
 - ai_summary: 20字摘要
-- sentiment_score: 情绪分 0-1（0=极差, 1=极好）
-- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral)
+- sentiment_score: 满意度 0-100（0=极差, 100=极好）
+- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral) + score(0-100)
 - manager_questions: 店长问的话（数组）
 - customer_answers: 顾客回答（数组）
 - visit_date, created_at: 时间
@@ -162,16 +162,16 @@ const BOSS_SYSTEM_PROMPT = `你是灵听，一个专业的餐饮数据分析助�
 ## 回答规范（非常重要）
 1. **像汇报工作一样**，简洁、有洞察、数据驱动
 2. **绝对不暴露技术细节**：
-   - ❌ "sentiment_score 是 0.85" → ✅ "顾客满意度很高"
-   - ❌ "1.0分" → ✅ "好评如潮"
+   - ❌ "sentiment_score 是 85" → ✅ "顾客满意度很高"
+   - ❌ "100分" → ✅ "好评如潮"
    - ❌ "negative sentiment" → ✅ "有些不满"
    - ❌ 提及 restaurant_id、JSONB、visit_type 等术语
-3. **情绪分口语化**：
-   - 0.8-1.0 → 非常满意/好评如潮
-   - 0.6-0.8 → 比较满意/整体不错
-   - 0.4-0.6 → 一般/中规中矩
-   - 0.2-0.4 → 不太满意/有待改进
-   - 0-0.2 → 很不满意/需要重视
+3. **满意度口语化**：
+   - 80-100 → 非常满意/好评如潮
+   - 60-79 → 比较满意/整体不错
+   - 40-59 → 一般/中规中矩
+   - 20-39 → 不太满意/有待改进
+   - 0-19 → 很不满意/需要重视
 4. **突出关键数据**：覆盖率、满意度趋势、问题数量
 5. **给出经营建议**：基于数据提出可行的改进方向
 6. **对比分析**：与上周/上月对比，展示变化趋势
@@ -231,8 +231,8 @@ const CHEF_SYSTEM_PROMPT = `你是灵听，一个专业的厨房运营助手。�
 **lingtin_visit_records** 表：
 - table_id: 桌号（A1, B3, D5）
 - ai_summary: 20字摘要
-- sentiment_score: 情绪分 0-1（0=极差, 1=极好）
-- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral)
+- sentiment_score: 满意度 0-100（0=极差, 100=极好）
+- feedbacks: JSONB数组，每条含 text + sentiment(positive/negative/neutral) + score(0-100)
 - visit_date, created_at: 时间
 
 **lingtin_dish_mentions** 表：
@@ -267,7 +267,7 @@ const CHEF_SYSTEM_PROMPT = `你是灵听，一个专业的厨房运营助手。�
 ## 回答规范（非常重要）
 1. **像厨房人之间聊天一样**，直接、实用、不绕弯
 2. **绝对不暴露技术细节**：
-   - ❌ "sentiment_score 是 0.85" → ✅ "顾客很满意"
+   - ❌ "sentiment_score 是 85" → ✅ "顾客很满意"
    - ❌ 提及 restaurant_id、JSONB 等术语
 3. **菜品问题说得具体**："花生不脆"比"口感有问题"有用100倍
 4. **直接给改进方向**：发现问题时，说出具体的厨房操作建议（如"炸制时间延长30秒"）
@@ -709,7 +709,7 @@ this.logger.log(`Executing tool: ${name}`);
           SELECT vr.restaurant_id, mr.restaurant_name, COUNT(*) as neg_count
           FROM lingtin_visit_records vr
           JOIN master_restaurant mr ON vr.restaurant_id = mr.id
-          WHERE vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 AND vr.sentiment_score < 0.4 ${scopeFor('vr')}
+          WHERE vr.visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 AND vr.sentiment_score < 40 ${scopeFor('vr')}
           GROUP BY vr.restaurant_id, mr.restaurant_name
           ORDER BY neg_count DESC LIMIT 3
         `),
@@ -779,7 +779,7 @@ this.logger.log(`Executing tool: ${name}`);
         this.runRawQuery(`
           SELECT table_id, feedbacks, ai_summary
           FROM lingtin_visit_records
-          WHERE visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 AND sentiment_score < 0.4 ${scopeFor()}
+          WHERE visit_date = (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date - 1 AND sentiment_score < 40 ${scopeFor()}
           LIMIT 5
         `),
         this.runRawQuery(`
@@ -798,7 +798,7 @@ this.logger.log(`Executing tool: ${name}`);
         `),
       ]);
       dataText += `## 昨日桌访统计\ntotalVisits: ${JSON.stringify(totalVisits)}\n\n`;
-      dataText += `## 差评反馈（情绪分 < 0.4）\nnegVisits: ${JSON.stringify(negVisits)}\n\n`;
+      dataText += `## 差评反馈（满意度 < 40）\nnegVisits: ${JSON.stringify(negVisits)}\n\n`;
       dataText += `## 好评菜品\nposDishes: ${JSON.stringify(posDishes)}\n\n`;
       dataText += `## 待处理行动建议\npendingActions: ${JSON.stringify(pendingActions)}\n`;
     }
@@ -966,9 +966,9 @@ this.logger.log(`Executing tool: ${name}`);
 
       // Add sentiment filter if present
       if (normalizedSql.includes('sentiment_score <')) {
-        query = query.lt('sentiment_score', 0.4);
+        query = query.lt('sentiment_score', 40);
       } else if (normalizedSql.includes('sentiment_score >')) {
-        query = query.gt('sentiment_score', 0.6);
+        query = query.gt('sentiment_score', 60);
       }
 
       // Add visit_type filter

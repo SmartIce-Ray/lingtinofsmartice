@@ -58,17 +58,13 @@ function StatusBadge({ status }: { status: RecordingStatus }) {
   );
 }
 
-// Sentiment emoji
-function SentimentEmoji({ sentiment }: { sentiment?: 'positive' | 'neutral' | 'negative' }) {
-  if (!sentiment) return null;
+// Satisfaction emoji based on score (0-100)
+function SatisfactionEmoji({ score }: { score?: number }) {
+  if (score == null) return null;
 
-  const emojis = {
-    positive: '😊',
-    neutral: '😐',
-    negative: '😟',
-  };
-
-  return <span className="text-lg">{emojis[sentiment]}</span>;
+  if (score >= 70) return <span className="text-lg">😊</span>;
+  if (score >= 50) return <span className="text-lg">😐</span>;
+  return <span className="text-lg">😟</span>;
 }
 
 // Mini waveform visualization (static)
@@ -340,7 +336,7 @@ export function RecordingHistory({
                   isPlaying={playingId === recording.id}
                   onToggle={() => handlePlayToggle(recording)}
                 />
-                <SentimentEmoji sentiment={recording.sentiment} />
+                <SatisfactionEmoji score={recording.sentimentScore} />
                 <StatusBadge status={recording.status} />
                 {/* Expand indicator */}
                 {recording.correctedTranscript && (

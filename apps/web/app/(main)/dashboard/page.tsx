@@ -344,13 +344,13 @@ export default function DashboardPage() {
 
         {/* Sentiment Summary with Trend Arrows */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">情绪概览</h2>
+          <h2 className="text-sm font-medium text-gray-700 mb-3">满意度概览</h2>
           {sentiment ? (
             <div className="flex items-center justify-around py-4">
               {[
-                { label: '正面😊', pct: sentiment.positive_percent, prevPct: yesterdaySentiment?.positive_percent, color: 'text-green-600', trendUp: 'text-green-500', trendDown: 'text-red-500' },
-                { label: '中性😐', pct: sentiment.neutral_percent, prevPct: yesterdaySentiment?.neutral_percent, color: 'text-gray-600', trendUp: 'text-gray-500', trendDown: 'text-gray-500' },
-                { label: '负面😟', pct: sentiment.negative_percent, prevPct: yesterdaySentiment?.negative_percent, color: 'text-red-500', trendUp: 'text-red-500', trendDown: 'text-green-500' },
+                { label: '满意😊', pct: sentiment.positive_percent, prevPct: yesterdaySentiment?.positive_percent, color: 'text-green-600', trendUp: 'text-green-500', trendDown: 'text-red-500' },
+                { label: '一般😐', pct: sentiment.neutral_percent, prevPct: yesterdaySentiment?.neutral_percent, color: 'text-gray-600', trendUp: 'text-gray-500', trendDown: 'text-gray-500' },
+                { label: '不满意😟', pct: sentiment.negative_percent, prevPct: yesterdaySentiment?.negative_percent, color: 'text-red-500', trendUp: 'text-red-500', trendDown: 'text-green-500' },
               ].map((item, i) => {
                 const diff = !multiDay && item.prevPct != null ? item.pct - item.prevPct : null;
                 return (
@@ -387,7 +387,7 @@ export default function DashboardPage() {
                 <div className="mb-4">
                   <div className="flex items-center gap-1.5 mb-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                    <span className="text-xs font-semibold text-gray-600">需要关注</span>
+                    <span className="text-xs font-semibold text-gray-600">需要改进</span>
                   </div>
                   <div className="space-y-2">
                     {sentiment.negative_feedbacks.map((fb, i) => {
@@ -422,7 +422,7 @@ export default function DashboardPage() {
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                    <span className="text-xs font-semibold text-gray-600">好评亮点</span>
+                    <span className="text-xs font-semibold text-gray-600">值得保持</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {sentiment.positive_feedbacks.map((fb, i) => {

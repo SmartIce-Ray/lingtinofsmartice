@@ -550,11 +550,11 @@ export class DashboardService {
   async getRestaurantsOverview(startDate: string, endDate: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
-        summary: { total_visits: 28, avg_sentiment: 0.72, restaurant_count: 3 },
+        summary: { total_visits: 28, avg_sentiment: 72, restaurant_count: 3 },
         restaurants: [
-          { id: 'mock-rest-1', name: '望京旗舰店', visit_count: 15, open_count: 20, coverage: 75, avg_sentiment: 0.68, keywords: ['清蒸鲈鱼', '服务热情', '偏咸', '红烧肉'] },
-          { id: 'mock-rest-2', name: '三里屯店', visit_count: 8, open_count: 15, coverage: 53, avg_sentiment: 0.65, keywords: ['上菜慢', '环境不错', '宫保鸡丁'] },
-          { id: 'mock-rest-3', name: '国贸店', visit_count: 5, open_count: 6, coverage: 83, avg_sentiment: 0.88, keywords: ['味道好', '分量足'] },
+          { id: 'mock-rest-1', name: '望京旗舰店', visit_count: 15, open_count: 20, coverage: 75, avg_sentiment: 68, keywords: ['清蒸鲈鱼', '服务热情', '偏咸', '红烧肉'] },
+          { id: 'mock-rest-2', name: '三里屯店', visit_count: 8, open_count: 15, coverage: 53, avg_sentiment: 65, keywords: ['上菜慢', '环境不错', '宫保鸡丁'] },
+          { id: 'mock-rest-3', name: '国贸店', visit_count: 5, open_count: 6, coverage: 83, avg_sentiment: 88, keywords: ['味道好', '分量足'] },
         ],
         recent_keywords: ['清蒸鲈鱼', '服务热情', '偏咸', '上菜慢', '环境不错', '味道好', '红烧肉', '宫保鸡丁', '分量足'],
       };
@@ -798,7 +798,7 @@ export class DashboardService {
         ],
         healthy_count: 1,
         restaurant_count: 3,
-        avg_sentiment: 0.68,
+        avg_sentiment: 68,
         avg_coverage: 78,
       };
     }
@@ -898,15 +898,15 @@ export class DashboardService {
       }
 
       // --- Anomaly: low sentiment ---
-      if (avgSentiment !== null && avgSentiment < 0.5) {
+      if (avgSentiment !== null && avgSentiment < 50) {
         problems.push({
           severity: 'red',
           category: 'sentiment',
           restaurantId: rest.id,
           restaurantName: rest.restaurant_name,
-          title: '整体情绪偏低',
+          title: '整体满意度偏低',
           evidence: [],
-          metric: `日均情绪 ${(avgSentiment).toFixed(2)}`,
+          metric: `日均满意度 ${Math.round(avgSentiment)}`,
         });
       }
 
@@ -1178,7 +1178,7 @@ export class DashboardService {
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', safeId)
         .eq('status', 'processed')
-        .gte('sentiment_score', 0.8),
+        .gte('sentiment_score', 80),
       client
         .from('lingtin_action_items')
         .select('id', { count: 'exact', head: true })
@@ -1322,7 +1322,7 @@ export class DashboardService {
             severity: 'high',
             storeName: rest.restaurant_name,
             storeId: rest.id,
-            message: `情绪分连续 3 天下降（${lastThree.map(v => (v * 100).toFixed(0)).join(' → ')}）`,
+            message: `满意度连续 3 天下降（${lastThree.map(v => Math.round(v)).join(' → ')}）`,
           });
         }
       }
@@ -1353,8 +1353,8 @@ export class DashboardService {
         type: 'sentiment_leader',
         storeName: s.name,
         storeId: s.id,
-        metricValue: Math.round(s.avgSentiment! * 100),
-        description: idx === 0 ? '情绪分最高' : `情绪分 TOP ${idx + 1}`,
+        metricValue: Math.round(s.avgSentiment!),
+        description: idx === 0 ? '满意度最高' : `满意度 TOP ${idx + 1}`,
         isMyStore: managedIds.includes(s.id),
       });
     });

@@ -275,7 +275,7 @@ export default function ChefDishesPage() {
                 {(problemDishes.length > 0 || kitchenProblems.length > 0) && (
                   <div className="flex items-center gap-2 mb-3">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <span className="text-sm font-semibold text-gray-700">需要关注</span>
+                    <span className="text-sm font-semibold text-gray-700">需要改进</span>
                   </div>
                 )}
 
@@ -378,7 +378,7 @@ export default function ChefDishesPage() {
                 {kitchenProblems.length === 0 && (
                   <div className="flex items-center gap-2 mb-3">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <span className="text-sm font-semibold text-gray-700">需要关注</span>
+                    <span className="text-sm font-semibold text-gray-700">需要改进</span>
                   </div>
                 )}
                 {kitchenProblems.length > 0 && (
@@ -516,7 +516,7 @@ export default function ChefDishesPage() {
               <section>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                  <span className="text-sm font-semibold text-gray-700">好评亮点</span>
+                  <span className="text-sm font-semibold text-gray-700">值得保持</span>
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">

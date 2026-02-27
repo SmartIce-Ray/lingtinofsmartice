@@ -113,9 +113,9 @@ export function BenchmarkPanel({ managedIdsParam }: BenchmarkPanelProps) {
         <div className="text-sm font-medium text-gray-700 px-1 mb-2">基准对比（近 7 天）</div>
         <div className="grid grid-cols-3 gap-3">
           <ComparisonCard
-            label="情绪分"
-            mine={Math.round(comparison.sentiment.mine * 100)}
-            company={Math.round(comparison.sentiment.company * 100)}
+            label="满意度"
+            mine={Math.round(comparison.sentiment.mine)}
+            company={Math.round(comparison.sentiment.company)}
             unit="分"
           />
           <ComparisonCard

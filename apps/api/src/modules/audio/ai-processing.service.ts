@@ -1,5 +1,5 @@
 // AI Processing Service - Handles STT and AI tagging pipeline
-// v6.0 - Prompt V2: fine-grained sentiment + feedback consistency + fallback extraction
+// v7.0 - Satisfaction scoring: per-item score 0-100, system-calculated overall satisfaction
 
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
@@ -9,10 +9,11 @@ import { DashScopeSttService } from './dashscope-stt.service';
 // OpenRouter API Configuration
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// Feedback item with sentiment label
+// Feedback item with sentiment label and satisfaction score
 export interface FeedbackItem {
   text: string;
   sentiment: 'positive' | 'negative' | 'neutral' | 'suggestion';
+  score: number; // 0-100 per-item satisfaction score
 }
 
 // Simplified MVP result structure (5 dimensions)
@@ -20,7 +21,7 @@ interface ProcessingResult {
   transcript: string;
   correctedTranscript: string;
   aiSummary: string;           // 20字摘要
-  sentimentScore: number;       // 0-1 情绪分
+  sentimentScore: number;       // 0-100 满意度（系统计算）
   feedbacks: FeedbackItem[];    // 评价短语列表（带情绪标签）
   managerQuestions: string[];   // 店长问了什么
   customerAnswers: string[];    // 顾客怎么回答
@@ -81,7 +82,7 @@ export class AiProcessingService {
         const emptyResult = {
           correctedTranscript: '',
           aiSummary: '无法识别语音内容',
-          sentimentScore: 0.5,
+          sentimentScore: 60,
           feedbacks: [],
           managerQuestions: [],
           customerAnswers: [],
@@ -106,7 +107,7 @@ export class AiProcessingService {
         const fillerResult = {
           correctedTranscript: rawTranscript,
           aiSummary: '语音内容无有效信息',
-          sentimentScore: 0.5,
+          sentimentScore: 60,
           feedbacks: [] as FeedbackItem[],
           managerQuestions: [] as string[],
           customerAnswers: [] as string[],
@@ -181,7 +182,7 @@ export class AiProcessingService {
           rawTranscript,
           correctedTranscript: '',
           aiSummary: '无法识别语音内容',
-          sentimentScore: 0.5,
+          sentimentScore: 60,
           feedbacks: [],
           managerQuestions: [],
           customerAnswers: [],
@@ -196,7 +197,7 @@ export class AiProcessingService {
           rawTranscript,
           correctedTranscript: rawTranscript,
           aiSummary: '语音内容无有效信息',
-          sentimentScore: 0.5,
+          sentimentScore: 60,
           feedbacks: [],
           managerQuestions: [],
           customerAnswers: [],
@@ -496,6 +497,34 @@ export class AiProcessingService {
   }
 
   /**
+   * Calculate overall satisfaction score from per-item feedback scores.
+   * Weights: negative=1.5, positive=1.0, suggestion=1.0, neutral=0.8
+   * Returns 60 (baseline) when no feedbacks.
+   */
+  private calculateSatisfaction(feedbacks: FeedbackItem[]): number {
+    if (!feedbacks || feedbacks.length === 0) return 60;
+
+    const weights: Record<string, number> = {
+      positive: 1.0,
+      negative: 1.5,
+      neutral: 0.8,
+      suggestion: 1.0,
+    };
+
+    let weightedSum = 0;
+    let totalWeight = 0;
+
+    for (const fb of feedbacks) {
+      const w = weights[fb.sentiment] ?? 1.0;
+      const score = typeof fb.score === 'number' ? fb.score : 60;
+      weightedSum += score * w;
+      totalWeight += w;
+    }
+
+    return totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 100) / 100 : 60;
+  }
+
+  /**
    * Process transcript with AI for correction and tagging
    * Throws error if API key not configured or processing fails
    */
@@ -521,11 +550,10 @@ export class AiProcessingService {
 输出JSON（只输出JSON，无其他内容）：
 {
   "aiSummary": "20字以内摘要",
-  "sentimentScore": 0.62,
   "feedbacks": [
-    {"text": "五花趾还挺好吃的", "sentiment": "positive"},
-    {"text": "上菜速度有点慢", "sentiment": "negative"},
-    {"text": "分量再多点就好了", "sentiment": "suggestion"}
+    {"text": "五花趾还挺好吃的", "sentiment": "positive", "score": 78},
+    {"text": "上菜速度有点慢", "sentiment": "negative", "score": 30},
+    {"text": "分量再多点就好了", "sentiment": "suggestion", "score": 50}
   ],
   "managerQuestions": ["菜品口感怎么样", "是第几次来"],
   "customerAnswers": ["还不错", "第1次，朋友介绍来的"]
@@ -533,35 +561,28 @@ export class AiProcessingService {
 
 ## 规则
 
-### 1. sentimentScore — 使用连续值，不要只用固定档位
-反映顾客的整体满意度。**必须使用精确到小数点后两位的连续值**（如0.42、0.58、0.67），不要只输出0.30/0.50/0.60/0.70等整数档。
+### 1. feedbacks — 宁多勿漏，每条带 score（0-100）
+提取顾客对菜品、服务、环境的所有评价，每条独立打分。
 
-锚点参考：
-- 0.15: 投诉退菜、强烈不满、要求赔偿
-- 0.25: 多项抱怨、明显失望
-- 0.35: 有具体不满（"太咸"、"等太久"），但整体语气平和
-- 0.45: 顾客应答简短且略带保留，如"还行吧"、"一般般"
-- 0.50: 纯寒暄无实质反馈，或店长单方面说话顾客未回应
-- 0.55: 顾客有回应但态度平淡，如"可以"、"还可以"
-- 0.62: 顾客表达温和满意，如"味道不错"、"挺好的"
-- 0.72: 顾客明确满意且具体夸奖某道菜
-- 0.82: 多次夸赞、表示会再来、推荐给朋友
-- 0.92: 极其热烈的好评、主动要求打好评
+**score 锚点（0-100）**：
+- 90-100: 极其满意——"太好吃了！"、"必须再来！"、"主动要求打好评"
+- 75-89: 明确满意——"好吃"、"味道不错"、"服务很好"、"挺好的"
+- 60-74: 温和满意——"还不错"、"可以"、"没问题"
+- 40-59: 中性/模糊——"还行"、"一般"、"还可以吧"
+- 25-39: 具体不满——"有点咸"、"等太久"、"有点辣"
+- 10-24: 明显不满——"太咸了"、"退菜"、"不新鲜"
+- 0-9: 强烈不满——"投诉"、"要求赔偿"、"再也不来"
 
 **一致性规则（强制）**：
-- feedbacks 全是 positive → sentimentScore 必须 ≥ 0.58
-- feedbacks 有 negative 且无 positive → sentimentScore 必须 ≤ 0.45
-- feedbacks 有 negative 也有 positive → 根据比例在 0.40~0.65 之间
-- feedbacks 全是 neutral → sentimentScore 在 0.48~0.58 之间
-- feedbacks 为空（无法提取） → sentimentScore = 0.50
-
-### 2. feedbacks — 宁多勿漏，但必须有原文依据
-提取顾客对菜品、服务、环境的所有评价。
+- positive → score 必须 ≥ 60
+- negative → score 必须 ≤ 45
+- neutral → score 在 40-65 之间
+- suggestion → score 在 35-65 之间
 
 **兜底规则**：如果对话中顾客有实质性回应（不只是"嗯"/"好"），必须至少提取1条feedback。
-- 顾客说"还行"/"还可以" → 提取为 {"text": "整体还可以", "sentiment": "neutral"}
-- 顾客被问感受后说"好的/没问题" → 提取为 {"text": "用餐体验满意", "sentiment": "positive"}
-- 店长问"有什么建议"顾客说"没有" → 提取为 {"text": "没有意见", "sentiment": "neutral"}
+- 顾客说"还行"/"还可以" → {"text": "整体还可以", "sentiment": "neutral", "score": 52}
+- 顾客被问感受后说"好的/没问题" → {"text": "用餐体验满意", "sentiment": "positive", "score": 68}
+- 店长问"有什么建议"顾客说"没有" → {"text": "没有意见", "sentiment": "neutral", "score": 55}
 
 **格式要求**：
 - 每条包含评价对象+评价词（如"五花趾还挺好吃的"而非单独的"好吃"）
@@ -586,28 +607,28 @@ export class AiProcessingService {
 - 回答店长提问"辣不辣"→"不辣，挺好的" → positive
 - 主动说"不辣，没味道" → negative
 
-### 3. managerQuestions — 店长/服务员的话
+### 2. managerQuestions — 店长/服务员的话
 提取问候和询问（不含推销、解释性语句）
 
-### 4. customerAnswers — 顾客的回复
+### 3. customerAnswers — 顾客的回复
 提取顾客的所有实质性回应
 
-### 5. 空数据处理
+### 4. 空数据处理
 某项为空返回空数组[]
 
 ## 参考案例
 
 案例1 — 简短正面：
 输入："你好打扰一下，菜品口感怎么样？还不错啊，有什么建议吗？没有，挺好的，祝你们用餐愉快。"
-输出：{"aiSummary":"顾客对菜品满意，无建议","sentimentScore":0.63,"feedbacks":[{"text":"菜品口感还不错","sentiment":"positive"},{"text":"整体挺好的","sentiment":"positive"}],"managerQuestions":["菜品口感怎么样","有什么建议吗"],"customerAnswers":["还不错","没有，挺好的"]}
+输出：{"aiSummary":"顾客对菜品满意，无建议","feedbacks":[{"text":"菜品口感还不错","sentiment":"positive","score":72},{"text":"整体挺好的","sentiment":"positive","score":70}],"managerQuestions":["菜品口感怎么样","有什么建议吗"],"customerAnswers":["还不错","没有，挺好的"]}
 
 案例2 — 有具体不满：
 输入："两位打扰一下，今天菜品怎么样？嗯，那个酸菜鱼有点太辣了不太习惯，还有上菜速度有点慢等了差不多半个小时，其他的都还行，好的我跟厨房反映一下。"
-输出：{"aiSummary":"顾客反馈酸菜鱼太辣、上菜慢","sentimentScore":0.38,"feedbacks":[{"text":"酸菜鱼有点太辣了","sentiment":"negative"},{"text":"上菜速度有点慢","sentiment":"negative"},{"text":"其他菜品还行","sentiment":"neutral"}],"managerQuestions":["今天菜品怎么样"],"customerAnswers":["酸菜鱼有点太辣了不太习惯","上菜速度有点慢等了差不多半个小时","其他的都还行"]}
+输出：{"aiSummary":"顾客反馈酸菜鱼太辣、上菜慢","feedbacks":[{"text":"酸菜鱼有点太辣了","sentiment":"negative","score":28},{"text":"上菜速度有点慢","sentiment":"negative","score":25},{"text":"其他菜品还行","sentiment":"neutral","score":52}],"managerQuestions":["今天菜品怎么样"],"customerAnswers":["酸菜鱼有点太辣了不太习惯","上菜速度有点慢等了差不多半个小时","其他的都还行"]}
 
 案例3 — 纯寒暄无反馈：
 输入："你好两位新年快乐，菜品有什么意见吗？噢好谢谢你们的肯定，祝用餐愉快。"
-输出：{"aiSummary":"店长问候，顾客未给具体反馈","sentimentScore":0.50,"feedbacks":[],"managerQuestions":["菜品有什么意见吗"],"customerAnswers":[]}`;
+输出：{"aiSummary":"店长问候，顾客未给具体反馈","feedbacks":[],"managerQuestions":["菜品有什么意见吗"],"customerAnswers":[]}`;
 
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
@@ -663,11 +684,21 @@ export class AiProcessingService {
       throw new Error('AI_PARSE_ERROR: 无法解析 AI 返回的JSON');
     }
 
+    // Parse feedbacks with per-item scores
+    const feedbacks: FeedbackItem[] = (result.feedbacks || []).map((fb: { text?: string; sentiment?: string; score?: number }) => ({
+      text: fb.text || '',
+      sentiment: fb.sentiment || 'neutral',
+      score: typeof fb.score === 'number' ? fb.score : 60,
+    }));
+
+    // Calculate overall satisfaction from per-item scores (system-calculated, not AI)
+    const sentimentScore = this.calculateSatisfaction(feedbacks);
+
     return {
       correctedTranscript: '', // 由调用方设置为rawTranscript
       aiSummary: result.aiSummary || '无摘要',
-      sentimentScore: parseFloat(result.sentimentScore) || 0.5,
-      feedbacks: result.feedbacks || [],
+      sentimentScore,
+      feedbacks,
       managerQuestions: result.managerQuestions || [],
       customerAnswers: result.customerAnswers || [],
     };

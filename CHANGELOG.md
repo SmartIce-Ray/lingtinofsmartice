@@ -7,6 +7,35 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-02-27
+
+### 变更 (Changed)
+- **满意度评分体系升级** — 从主观情绪分（0-1）升级为结构化满意度评分（0-100）
+  - AI 对每条反馈独立打分（`score: 0-100`），系统用加权公式计算整体满意度
+  - 权重：negative×1.5, positive×1.0, suggestion×1.0, neutral×0.8
+  - 移除 AI 输出的整体 `sentimentScore`，改由 `calculateSatisfaction()` 系统计算
+- **前端术语统一** — "情绪分/好评/差评" 改为 "满意度/满意/不满意"
+  - 管理层总览：情绪→满意度，优秀/一般/需关注→满意/一般/不满意
+  - 门店详情：好评/中评/差评→满意/一般/不满意，移除 `×100` 显示转换
+  - 店长看板：情绪概览→满意度概览，正面/中性/负面→满意/一般/不满意
+  - 店长看板：需要关注→需要改进，好评亮点→值得保持
+  - 厨师长：需要关注→需要改进，好评亮点→值得保持
+  - 顾客洞察：高频差评→不满意反馈，高频好评→值得保持
+  - 基准对比：情绪分→满意度，移除 `×100` 转换
+  - 录音历史：情绪emoji改用满意度分数判断（≥70😊/≥50😐/<50😟）
+  - 激励横幅：位好评→次满意
+- **后端阈值统一** — 所有 `0.x` 阈值改为 `0-100` 范围
+  - dashboard: `≥0.8`→`≥80`（好评计数），`<0.5`→`<50`（异常检测）
+  - chat: 差评筛选 `<0.4`→`<40`，满意筛选 `>0.6`→`>60`
+  - daily-summary: 正面 `≥0.6`→`≥60`，负面 `≤0.4`→`≤40`
+  - AI 智库 system prompt 满意度口语化映射更新为 0-100 范围
+
+### 需要配合的操作
+- **数据库迁移**（代码部署前执行）：
+  1. `ALTER TABLE lingtin_visit_records ALTER COLUMN sentiment_score TYPE DECIMAL(5,2);`
+  2. `UPDATE lingtin_visit_records SET sentiment_score = ROUND(sentiment_score * 100) WHERE sentiment_score IS NOT NULL AND sentiment_score <= 1.0;`
+- **全量重分析**（部署后）：复用 `POST /api/audio/reanalyze-batch` 端点，让新 prompt 生成 per-item score
+
 ## [1.8.3] - 2026-02-27
 
 ### 新增 (Added)
