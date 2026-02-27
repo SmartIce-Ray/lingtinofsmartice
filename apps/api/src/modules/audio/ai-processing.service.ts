@@ -227,6 +227,7 @@ export class AiProcessingService {
   async reanalyzeBatch(
     limit: number,
     cutoffDate: string,
+    onlyMissingFeedbacks = false,
   ): Promise<{
     total: number;
     processed: number;
@@ -234,7 +235,7 @@ export class AiProcessingService {
     errors: { id: string; error: string }[];
   }> {
     const client = this.supabase.getClient();
-    const { data: records, error } = await client
+    let query = client
       .from('lingtin_visit_records')
       .select('id')
       .eq('status', 'processed')
@@ -242,6 +243,12 @@ export class AiProcessingService {
       .lt('processed_at', cutoffDate)
       .order('processed_at', { ascending: true })
       .limit(limit);
+
+    if (onlyMissingFeedbacks) {
+      query = query.or('feedbacks.is.null,feedbacks.eq.[]');
+    }
+
+    const { data: records, error } = await query;
 
     if (error) {
       this.logger.error(`Batch query failed: ${error.message}`);
