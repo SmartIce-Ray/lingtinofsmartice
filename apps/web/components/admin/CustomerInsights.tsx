@@ -1,5 +1,5 @@
-// Customer Insights Component - Customer suggestions + feedback hot words
-// Extracted from /admin/question-templates/page.tsx for use in merged insights page
+// Customer Insights Component - Store-grouped collapsible view
+// v2.0.1 - Redesigned: suggestions + feedbacks merged by store, date-synced
 
 'use client';
 
@@ -23,8 +23,15 @@ interface SuggestionItem {
   evidence: SuggestionEvidence[];
 }
 
+interface SuggestionByRestaurant {
+  restaurant_id: string;
+  restaurant_name: string;
+  suggestions: SuggestionItem[];
+}
+
 interface SuggestionsResponse {
   suggestions: SuggestionItem[];
+  by_restaurant?: SuggestionByRestaurant[];
 }
 
 interface FeedbackContext {
@@ -62,6 +69,17 @@ interface SentimentSummaryResponse {
   by_restaurant?: ByRestaurantItem[];
 }
 
+// --- Merged store data ---
+interface MergedStoreData {
+  restaurant_id: string;
+  restaurant_name: string;
+  suggestions: SuggestionItem[];
+  negative_feedbacks: FeedbackItem[];
+  positive_feedbacks: FeedbackItem[];
+  negative_count: number;
+  positive_count: number;
+}
+
 // --- Inline Q&A conversation renderer ---
 function QAConversation({ questions, answers }: { questions: string[]; answers: string[] }) {
   const maxLen = Math.max(questions.length, answers.length);
@@ -85,6 +103,38 @@ function QAConversation({ questions, answers }: { questions: string[]; answers: 
         </Fragment>
       ))}
     </div>
+  );
+}
+
+// --- Audio play button ---
+function AudioButton({ audioKey, audioUrl, playingKey, onToggle }: {
+  audioKey: string;
+  audioUrl: string;
+  playingKey: string | null;
+  onToggle: (key: string, url: string) => void;
+}) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onToggle(audioKey, audioUrl); }}
+      className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+        playingKey === audioKey ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
+      }`}
+    >
+      {playingKey === audioKey ? (
+        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+      ) : (
+        <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+      )}
+    </button>
+  );
+}
+
+// --- Chevron icon ---
+function ChevronDown({ expanded, className = '' }: { expanded: boolean; className?: string }) {
+  return (
+    <svg className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${expanded ? 'rotate-180' : ''} ${className}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
   );
 }
 
@@ -124,72 +174,148 @@ export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: C
     [playingKey, stopAudio],
   );
 
-  // Fetch customer suggestions (7-day rolling, scoped by managed restaurants)
+  // Fetch suggestions — now synced with date selector
   const { data: suggestionsData, isLoading: sugLoading } = useSWR<SuggestionsResponse>(
-    `/api/dashboard/suggestions?restaurant_id=all&days=7${managedIdsParam}`
+    `/api/dashboard/suggestions?restaurant_id=all&start_date=${startDate}&end_date=${endDate}${managedIdsParam}`
   );
 
   // Fetch sentiment summary for feedback hot words
-  const sentimentUrl = `/api/dashboard/sentiment-summary?restaurant_id=all&start_date=${startDate}&end_date=${endDate}${managedIdsParam}`;
-  const { data: sentimentData, isLoading: sentLoading } = useSWR<SentimentSummaryResponse>(sentimentUrl);
+  const { data: sentimentData, isLoading: sentLoading } = useSWR<SentimentSummaryResponse>(
+    `/api/dashboard/sentiment-summary?restaurant_id=all&start_date=${startDate}&end_date=${endDate}${managedIdsParam}`
+  );
 
-  const suggestions = suggestionsData?.suggestions ?? [];
-  const negativeFeedbacks = sentimentData?.negative_feedbacks ?? [];
-  const positiveFeedbacks = sentimentData?.positive_feedbacks ?? [];
-  const byRestaurant = sentimentData?.by_restaurant ?? [];
   const isLoading = sugLoading || sentLoading;
 
-  // Expand state for suggestions (by index) and feedbacks (by "neg-idx" / "pos-idx")
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const toggleExpand = (key: string) => setExpandedKey(prev => prev === key ? null : key);
+  // Merge suggestions + feedbacks by restaurant
+  const mergedStores: MergedStoreData[] = (() => {
+    const storeMap = new Map<string, MergedStoreData>();
 
-  const renderFeedbackRow = (fb: FeedbackItem, type: 'neg' | 'pos', keyPrefix: string, idx: number) => {
-    const fbKey = `${keyPrefix}-${type}-${idx}`;
-    const isExp = expandedKey === fbKey;
+    // Add from suggestions by_restaurant
+    const sugByRest = suggestionsData?.by_restaurant ?? [];
+    for (const sr of sugByRest) {
+      storeMap.set(sr.restaurant_id, {
+        restaurant_id: sr.restaurant_id,
+        restaurant_name: sr.restaurant_name,
+        suggestions: sr.suggestions ?? [],
+        negative_feedbacks: [],
+        positive_feedbacks: [],
+        negative_count: 0,
+        positive_count: 0,
+      });
+    }
+
+    // Add from sentiment by_restaurant
+    const sentByRest = sentimentData?.by_restaurant ?? [];
+    for (const sr of sentByRest) {
+      const existing = storeMap.get(sr.restaurant_id);
+      if (existing) {
+        existing.negative_feedbacks = sr.negative_feedbacks ?? [];
+        existing.positive_feedbacks = sr.positive_feedbacks ?? [];
+        existing.negative_count = sr.negative_count ?? 0;
+        existing.positive_count = sr.positive_count ?? 0;
+      } else {
+        storeMap.set(sr.restaurant_id, {
+          restaurant_id: sr.restaurant_id,
+          restaurant_name: sr.restaurant_name,
+          suggestions: [],
+          negative_feedbacks: sr.negative_feedbacks ?? [],
+          positive_feedbacks: sr.positive_feedbacks ?? [],
+          negative_count: sr.negative_count ?? 0,
+          positive_count: sr.positive_count ?? 0,
+        });
+      }
+    }
+
+    // Sort: stores with more issues first (suggestions + negatives)
+    return Array.from(storeMap.values())
+      .filter(s => s.suggestions.length > 0 || s.negative_count > 0 || s.positive_count > 0)
+      .sort((a, b) => (b.suggestions.length + b.negative_count) - (a.suggestions.length + a.negative_count));
+  })();
+
+  // Expand state: store-level collapse + inner detail expand
+  const [expandedStore, setExpandedStore] = useState<string | null>(null);
+  const [expandedDetail, setExpandedDetail] = useState<string | null>(null);
+  const toggleStore = (id: string) => {
+    setExpandedStore(prev => prev === id ? null : id);
+    setExpandedDetail(null);
+  };
+  const toggleDetail = (key: string) => setExpandedDetail(prev => prev === key ? null : key);
+
+  const renderSuggestionRow = (item: SuggestionItem, storeId: string, idx: number) => {
+    const sugKey = `${storeId}-sug-${idx}`;
+    const isExp = expandedDetail === sugKey;
+    const hasEvidence = item.evidence.length > 0;
+    return (
+      <div key={sugKey} className={`transition-colors ${isExp ? 'bg-gray-50' : ''}`}>
+        <div
+          className={`flex items-start gap-2.5 px-4 py-2.5 ${hasEvidence ? 'cursor-pointer active:bg-gray-50' : ''}`}
+          onClick={() => hasEvidence && toggleDetail(sugKey)}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0 mt-1.5" />
+          <span className="text-sm text-gray-800 flex-1 leading-relaxed">{item.text}</span>
+          <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+            <span className="text-xs font-medium text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">{item.count}</span>
+            {hasEvidence && <ChevronDown expanded={isExp} />}
+          </div>
+        </div>
+        {isExp && (
+          <div className="px-4 pb-3 space-y-2">
+            {item.evidence.map((ev, ei) => {
+              const audioKey = `${sugKey}-${ei}`;
+              return (
+                <div key={ei} className="bg-white rounded-xl p-3 border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                      {ev.tableId}桌
+                    </span>
+                    {ev.audioUrl && (
+                      <AudioButton audioKey={audioKey} audioUrl={ev.audioUrl} playingKey={playingKey} onToggle={handleAudioToggle} />
+                    )}
+                  </div>
+                  <div className="border-l-2 border-primary-200 pl-3">
+                    <QAConversation questions={ev.managerQuestions ?? []} answers={ev.customerAnswers ?? []} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderFeedbackRow = (fb: FeedbackItem, type: 'neg' | 'pos', storeId: string, idx: number) => {
+    const fbKey = `${storeId}-${type}-${idx}`;
+    const isExp = expandedDetail === fbKey;
     const hasCtx = fb.contexts && fb.contexts.length > 0;
     const dotColor = type === 'neg' ? 'bg-amber-400' : 'bg-green-400';
     return (
-      <div key={idx} className={`transition-colors ${isExp ? 'bg-gray-50' : ''}`}>
+      <div key={fbKey} className={`transition-colors ${isExp ? 'bg-gray-50' : ''}`}>
         <div
           className={`flex items-center gap-2.5 px-4 py-2.5 ${hasCtx ? 'cursor-pointer active:bg-gray-50' : ''}`}
-          onClick={() => hasCtx && toggleExpand(fbKey)}
+          onClick={() => hasCtx && toggleDetail(fbKey)}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${dotColor} flex-shrink-0`} />
           <span className="text-sm text-gray-800 flex-1 leading-relaxed">&ldquo;{fb.text}&rdquo;</span>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <span className="text-xs text-gray-300">{fb.count} 桌</span>
-            {hasCtx && (
-              <svg className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExp ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            )}
+            {hasCtx && <ChevronDown expanded={isExp} />}
           </div>
         </div>
         {isExp && hasCtx && (
           <div className="px-4 pb-3 space-y-2">
             {fb.contexts.slice(0, 3).map((ctx, ci) => {
-              const audioKey = `${keyPrefix}-${type}-${idx}-${ci}`;
+              const audioKey = `${fbKey}-${ci}`;
               return (
                 <div key={ci} className="bg-white rounded-xl p-3 border border-gray-100">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{ctx.tableId}桌</span>
                     {ctx.audioUrl && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleAudioToggle(audioKey, ctx.audioUrl!); }}
-                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
-                          playingKey === audioKey ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
-                        }`}
-                      >
-                        {playingKey === audioKey ? (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                        ) : (
-                          <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                        )}
-                      </button>
+                      <AudioButton audioKey={audioKey} audioUrl={ctx.audioUrl} playingKey={playingKey} onToggle={handleAudioToggle} />
                     )}
                   </div>
                   <div className="border-l-2 border-primary-200 pl-3">
-                    <QAConversation questions={ctx.managerQuestions || []} answers={ctx.customerAnswers || []} />
+                    <QAConversation questions={ctx.managerQuestions ?? []} answers={ctx.customerAnswers ?? []} />
                   </div>
                 </div>
               );
@@ -201,7 +327,7 @@ export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: C
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Loading */}
       {isLoading && (
         <div className="space-y-3">
@@ -215,286 +341,83 @@ export function CustomerInsights({ startDate, endDate, managedIdsParam = '' }: C
         </div>
       )}
 
-      {/* Customer Suggestions */}
-      {suggestions.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-4 pt-4 pb-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-900">顾客建议 · 近 7 天</span>
-              <span className="text-xs text-gray-300">{suggestions.length} 条</span>
-            </div>
-          </div>
-          <div>
-            {suggestions.map((item, idx) => {
-              const sugKey = `sug-${idx}`;
-              const isExpanded = expandedKey === sugKey;
-              const hasEvidence = item.evidence.length > 0;
-              return (
-                <div key={idx} className={`transition-colors ${isExpanded ? 'bg-gray-50' : ''}`}>
-                  <div
-                    className={`px-4 py-3 ${hasEvidence ? 'cursor-pointer active:bg-gray-50' : ''}`}
-                    onClick={() => hasEvidence && toggleExpand(sugKey)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800 leading-relaxed">{item.text}</p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {item.restaurants.filter(Boolean).join('、') || '未知门店'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-                        <span className="text-xs font-medium text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">
-                          {item.count}
-                        </span>
-                        {hasEvidence && (
-                          <svg
-                            className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Expanded evidence */}
-                  {isExpanded && (
-                    <div className="px-4 pb-3 space-y-2">
-                      {item.evidence.map((ev, ei) => {
-                        const audioKey = `sug-${idx}-${ei}`;
-                        return (
-                          <div key={ei} className="bg-white rounded-xl p-3 border border-gray-100">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                                {ev.restaurantName || '门店'} · {ev.tableId}桌
-                              </span>
-                              {ev.audioUrl && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleAudioToggle(audioKey, ev.audioUrl!); }}
-                                  className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
-                                    playingKey === audioKey
-                                      ? 'bg-primary-100 text-primary-600'
-                                      : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
-                                  }`}
-                                >
-                                  {playingKey === audioKey ? (
-                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                                  ) : (
-                                    <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                            <div className="border-l-2 border-primary-200 pl-3">
-                              <QAConversation
-                                questions={ev.managerQuestions || []}
-                                answers={ev.customerAnswers || []}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {/* Separator */}
-                  {idx < suggestions.length - 1 && !isExpanded && <div className="mx-4 border-t border-gray-50" />}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Store-grouped collapsible list */}
+      {mergedStores.map((store) => {
+        const isOpen = expandedStore === store.restaurant_id;
+        const sugCount = store.suggestions.length;
+        const hasNeg = store.negative_feedbacks.length > 0;
+        const hasPos = store.positive_feedbacks.length > 0;
 
-      {/* Feedback by Restaurant */}
-      {byRestaurant.length > 0 && (
-        <div className="space-y-3">
-          {byRestaurant.map((rest) => {
-            const hasNeg = rest.negative_feedbacks.length > 0;
-            const hasPos = rest.positive_feedbacks.length > 0;
-            if (!hasNeg && !hasPos) return null;
-            const keyPrefix = `r-${rest.restaurant_id}`;
-            return (
-              <div key={rest.restaurant_id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-900">{rest.restaurant_name}</span>
-                  <div className="flex items-center gap-2">
-                    {rest.negative_count > 0 && (
-                      <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{rest.negative_count} 差</span>
-                    )}
-                    {rest.positive_count > 0 && (
-                      <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">{rest.positive_count} 好</span>
-                    )}
+        return (
+          <div key={store.restaurant_id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            {/* Store header — always visible */}
+            <div
+              className="px-4 py-3.5 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
+              onClick={() => toggleStore(store.restaurant_id)}
+            >
+              <span className="text-sm font-semibold text-gray-900">{store.restaurant_name}</span>
+              <div className="flex items-center gap-2">
+                {sugCount > 0 && (
+                  <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">{sugCount} 建议</span>
+                )}
+                {store.negative_count > 0 && (
+                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{store.negative_count} 差</span>
+                )}
+                {store.positive_count > 0 && (
+                  <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">{store.positive_count} 好</span>
+                )}
+                <ChevronDown expanded={isOpen} />
+              </div>
+            </div>
+
+            {/* Expanded content */}
+            {isOpen && (
+              <div className="border-t border-gray-100">
+                {/* Suggestions section */}
+                {sugCount > 0 && (
+                  <div>
+                    <div className="px-4 pt-2.5 pb-1">
+                      <span className="text-xs text-purple-500 font-medium">建议</span>
+                    </div>
+                    {store.suggestions.map((sug, idx) => renderSuggestionRow(sug, store.restaurant_id, idx))}
                   </div>
-                </div>
+                )}
+
+                {/* Negative feedbacks */}
                 {hasNeg && (
-                  <div>
-                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">不满意</span></div>
-                    {rest.negative_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'neg', keyPrefix, idx))}
-                  </div>
+                  <>
+                    {sugCount > 0 && <div className="mx-4 border-t border-gray-100" />}
+                    <div>
+                      <div className="px-4 pt-2.5 pb-1">
+                        <span className="text-xs text-amber-500 font-medium">不满意</span>
+                      </div>
+                      {store.negative_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'neg', store.restaurant_id, idx))}
+                    </div>
+                  </>
                 )}
-                {hasNeg && hasPos && <div className="mx-4 border-t border-gray-100" />}
+
+                {/* Positive feedbacks */}
                 {hasPos && (
-                  <div>
-                    <div className="px-4 pt-1 pb-1"><span className="text-xs text-gray-400">满意</span></div>
-                    {rest.positive_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'pos', keyPrefix, idx))}
-                  </div>
+                  <>
+                    {(sugCount > 0 || hasNeg) && <div className="mx-4 border-t border-gray-100" />}
+                    <div>
+                      <div className="px-4 pt-2.5 pb-1">
+                        <span className="text-xs text-green-500 font-medium">满意</span>
+                      </div>
+                      {store.positive_feedbacks.map((fb, idx) => renderFeedbackRow(fb, 'pos', store.restaurant_id, idx))}
+                    </div>
+                  </>
                 )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Feedback Hot Words - flat view fallback */}
-      {byRestaurant.length === 0 && (negativeFeedbacks.length > 0 || positiveFeedbacks.length > 0) && (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          {/* Negative */}
-          {negativeFeedbacks.length > 0 && (
-            <div>
-              <div className="px-4 pt-4 pb-2">
-                <span className="text-sm font-semibold text-gray-900">不满意反馈</span>
+                <div className="h-2" />
               </div>
-              {negativeFeedbacks.slice(0, 6).map((fb, idx) => {
-                const fbKey = `neg-${idx}`;
-                const isExpanded = expandedKey === fbKey;
-                const hasContexts = fb.contexts && fb.contexts.length > 0;
-                return (
-                  <div key={idx} className={`transition-colors ${isExpanded ? 'bg-gray-50' : ''}`}>
-                    <div
-                      className={`flex items-center gap-2.5 px-4 py-2.5 ${hasContexts ? 'cursor-pointer active:bg-gray-50' : ''}`}
-                      onClick={() => hasContexts && toggleExpand(fbKey)}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-800 flex-1 leading-relaxed">&ldquo;{fb.text}&rdquo;</span>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className="text-xs text-gray-300">{fb.count} 桌</span>
-                        {hasContexts && (
-                          <svg
-                            className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                    {isExpanded && hasContexts && (
-                      <div className="px-4 pb-3 space-y-2">
-                        {fb.contexts.slice(0, 3).map((ctx, ci) => {
-                          const audioKey = `neg-${idx}-${ci}`;
-                          return (
-                            <div key={ci} className="bg-white rounded-xl p-3 border border-gray-100">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{ctx.tableId}桌</span>
-                                {ctx.audioUrl && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleAudioToggle(audioKey, ctx.audioUrl!); }}
-                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
-                                      playingKey === audioKey
-                                        ? 'bg-primary-100 text-primary-600'
-                                        : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
-                                    }`}
-                                  >
-                                    {playingKey === audioKey ? (
-                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                                  ) : (
-                                    <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                  )}
-                                  </button>
-                                )}
-                              </div>
-                              <div className="border-l-2 border-primary-200 pl-3">
-                                <QAConversation questions={ctx.managerQuestions || []} answers={ctx.customerAnswers || []} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Divider */}
-          {negativeFeedbacks.length > 0 && positiveFeedbacks.length > 0 && (
-            <div className="mx-4 border-t border-gray-100" />
-          )}
-
-          {/* Positive */}
-          {positiveFeedbacks.length > 0 && (
-            <div>
-              <div className="px-4 pt-4 pb-2">
-                <span className="text-sm font-semibold text-gray-900">值得保持</span>
-              </div>
-              {positiveFeedbacks.slice(0, 6).map((fb, idx) => {
-                const fbKey = `pos-${idx}`;
-                const isExpanded = expandedKey === fbKey;
-                const hasContexts = fb.contexts && fb.contexts.length > 0;
-                return (
-                  <div key={idx} className={`transition-colors ${isExpanded ? 'bg-gray-50' : ''}`}>
-                    <div
-                      className={`flex items-center gap-2.5 px-4 py-2.5 ${hasContexts ? 'cursor-pointer active:bg-gray-50' : ''}`}
-                      onClick={() => hasContexts && toggleExpand(fbKey)}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                      <span className="text-sm text-gray-800 flex-1 leading-relaxed">&ldquo;{fb.text}&rdquo;</span>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className="text-xs text-gray-300">{fb.count} 桌</span>
-                        {hasContexts && (
-                          <svg
-                            className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                    {isExpanded && hasContexts && (
-                      <div className="px-4 pb-3 space-y-2">
-                        {fb.contexts.slice(0, 3).map((ctx, ci) => {
-                          const audioKey = `pos-${idx}-${ci}`;
-                          return (
-                            <div key={ci} className="bg-white rounded-xl p-3 border border-gray-100">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{ctx.tableId}桌</span>
-                                {ctx.audioUrl && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleAudioToggle(audioKey, ctx.audioUrl!); }}
-                                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
-                                      playingKey === audioKey
-                                        ? 'bg-primary-100 text-primary-600'
-                                        : 'bg-gray-100 text-gray-600 hover:text-primary-600 hover:bg-primary-50'
-                                    }`}
-                                  >
-                                    {playingKey === audioKey ? (
-                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                                  ) : (
-                                    <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                  )}
-                                  </button>
-                                )}
-                              </div>
-                              <div className="border-l-2 border-primary-200 pl-3">
-                                <QAConversation questions={ctx.managerQuestions || []} answers={ctx.customerAnswers || []} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })}
 
       {/* Empty state */}
-      {!isLoading && suggestions.length === 0 && byRestaurant.length === 0 && negativeFeedbacks.length === 0 && positiveFeedbacks.length === 0 && (
+      {!isLoading && mergedStores.length === 0 && (
         <div className="bg-white rounded-xl p-8 text-center">
           <div className="text-4xl mb-3">💡</div>
           <h3 className="text-base font-medium text-gray-700 mb-1">暂无顾客洞察</h3>

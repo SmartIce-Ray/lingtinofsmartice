@@ -152,12 +152,26 @@ export class DashboardController {
   async getSuggestions(
     @Query('restaurant_id') restaurantId: string,
     @Query('days') days?: string,
+    @Query('start_date') startDate?: string,
+    @Query('end_date') endDate?: string,
     @Query('managed_ids') managedIdsStr?: string,
   ) {
     const managedIds = DashboardService.parseManagedIds(managedIdsStr);
+    let range: { start: string; end: string };
+    if (startDate || endDate) {
+      range = resolveRange(undefined, startDate, endDate);
+    } else {
+      const d = parseInt(days || '7', 10);
+      const now = new Date();
+      const start = new Date();
+      start.setDate(now.getDate() - d + 1);
+      const toCST = (dt: Date) => dt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+      range = { start: toCST(start), end: toCST(now) };
+    }
     return this.dashboardService.getSuggestions(
       restaurantId,
-      parseInt(days || '7', 10),
+      range.start,
+      range.end,
       managedIds,
     );
   }

@@ -335,7 +335,7 @@ export default function AdminBriefingPage() {
                           {rest.latest_review.ai_summary && (
                             <p className="text-sm text-gray-700 leading-relaxed">{rest.latest_review.ai_summary}</p>
                           )}
-                          {rest.latest_review.action_items && rest.latest_review.action_items.length > 0 && (
+                          {Array.isArray(rest.latest_review.action_items) && rest.latest_review.action_items.length > 0 && (
                             <div className="mt-2">
                               <div className="text-[10px] text-gray-400 mb-1">行动事项</div>
                               <ul className="space-y-1">
@@ -348,7 +348,7 @@ export default function AdminBriefingPage() {
                               </ul>
                             </div>
                           )}
-                          {rest.latest_review.key_decisions && rest.latest_review.key_decisions.length > 0 && (
+                          {Array.isArray(rest.latest_review.key_decisions) && rest.latest_review.key_decisions.length > 0 && (
                             <div className="mt-2">
                               <div className="text-[10px] text-gray-400 mb-1">关键决定</div>
                               <ul className="space-y-1">
@@ -519,8 +519,8 @@ function ProblemCard({
                   <div className="px-2.5 pb-2.5 pt-0">
                     <div className="border-l-2 border-primary-200 pl-3 py-1.5">
                       <QAConversation
-                        questions={ev.managerQuestions || []}
-                        answers={ev.customerAnswers || []}
+                        questions={ev.managerQuestions ?? []}
+                        answers={ev.customerAnswers ?? []}
                       />
                     </div>
                   </div>

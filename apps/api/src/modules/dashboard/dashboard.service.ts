@@ -1180,7 +1180,7 @@ export class DashboardService {
 
   // Get customer suggestions aggregated from feedbacks with sentiment==='suggestion'
   // Supports restaurant_id=all (cross-restaurant) or single restaurant UUID
-  async getSuggestions(restaurantId: string, days: number, managedIds: string[] | null = null) {
+  async getSuggestions(restaurantId: string, startDateStr: string, endDateStr: string, managedIds: string[] | null = null) {
     if (this.supabase.isMockMode()) {
       return {
         suggestions: [
@@ -1212,21 +1212,17 @@ export class DashboardService {
             ],
           },
         ],
+        by_restaurant: [],
       };
     }
 
     const client = this.supabase.getClient();
 
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days + 1);
-
     let query = client
       .from('lingtin_visit_records')
       .select('id, restaurant_id, table_id, feedbacks, audio_url, manager_questions, customer_answers')
-      .gte('visit_date', toChinaDateString(startDate))
-      .lte('visit_date', toChinaDateString(endDate))
+      .gte('visit_date', startDateStr)
+      .lte('visit_date', endDateStr)
       .eq('status', 'processed');
 
     if (restaurantId !== 'all') {
@@ -1289,7 +1285,40 @@ export class DashboardService {
       }))
       .sort((a, b) => b.count - a.count);
 
-    return { suggestions };
+    // Group suggestions by restaurant
+    const byRestMap = new Map<string, {
+      restaurant_id: string;
+      restaurant_name: string;
+      suggestions: typeof suggestions;
+    }>();
+
+    for (const sug of suggestions) {
+      for (const ev of sug.evidence) {
+        const rid = ev.restaurantId;
+        if (!byRestMap.has(rid)) {
+          byRestMap.set(rid, {
+            restaurant_id: rid,
+            restaurant_name: ev.restaurantName || restMap.get(rid) || rid,
+            suggestions: [],
+          });
+        }
+        const entry = byRestMap.get(rid)!;
+        // Add suggestion with evidence filtered to this restaurant only
+        if (!entry.suggestions.find(s => s.text === sug.text)) {
+          const filteredEvidence = sug.evidence.filter(e => e.restaurantId === rid);
+          entry.suggestions.push({
+            ...sug,
+            evidence: filteredEvidence,
+            count: filteredEvidence.length,
+          });
+        }
+      }
+    }
+
+    const by_restaurant = Array.from(byRestMap.values())
+      .sort((a, b) => b.suggestions.length - a.suggestions.length);
+
+    return { suggestions, by_restaurant };
   }
 
   // Get cumulative motivation stats for a restaurant (all-time totals)
