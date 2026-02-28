@@ -55,8 +55,8 @@ interface RestaurantOverview {
   review_completion?: number;
   latest_review?: {
     ai_summary: string;
-    action_items: string[];
-    key_decisions: string[];
+    action_items: unknown[];
+    key_decisions: unknown[];
   } | null;
 }
 
@@ -339,12 +339,17 @@ export default function AdminBriefingPage() {
                             <div className="mt-2">
                               <div className="text-[10px] text-gray-400 mb-1">行动事项</div>
                               <ul className="space-y-1">
-                                {rest.latest_review.action_items.map((item: string, i: number) => (
-                                  <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                                    <span className="text-primary-400 mt-0.5">·</span>
-                                    <span>{item}</span>
-                                  </li>
-                                ))}
+                                {rest.latest_review.action_items.map((item: unknown, i: number) => {
+                                  const text = typeof item === 'string' ? item
+                                    : item && typeof item === 'object' ? (item as Record<string, string>).what || (item as Record<string, string>).text || JSON.stringify(item)
+                                    : String(item);
+                                  return (
+                                    <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                                      <span className="text-primary-400 mt-0.5">·</span>
+                                      <span>{text}</span>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             </div>
                           )}
@@ -352,12 +357,17 @@ export default function AdminBriefingPage() {
                             <div className="mt-2">
                               <div className="text-[10px] text-gray-400 mb-1">关键决定</div>
                               <ul className="space-y-1">
-                                {rest.latest_review.key_decisions.map((d: string, i: number) => (
-                                  <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                                    <span className="text-green-400 mt-0.5">·</span>
-                                    <span>{d}</span>
-                                  </li>
-                                ))}
+                                {rest.latest_review.key_decisions.map((d: unknown, i: number) => {
+                                  const text = typeof d === 'string' ? d
+                                    : d && typeof d === 'object' ? (d as Record<string, string>).decision || (d as Record<string, string>).text || JSON.stringify(d)
+                                    : String(d);
+                                  return (
+                                    <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                                      <span className="text-green-400 mt-0.5">·</span>
+                                      <span>{text}</span>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             </div>
                           )}

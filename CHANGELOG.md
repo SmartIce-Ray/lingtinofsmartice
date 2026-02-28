@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-02-28
+
+### 修复 (Fixed)
+- **管理端总览崩溃修复** — 展开门店复盘记录时，`action_items`/`key_decisions` 为对象数组导致 React 渲染崩溃，改为安全提取文本字段
+- **厨师长会议页过滤增强** — `isKitchenCategory`（仅 dish_quality）替换为 `isKitchenRelevant`，新增 service_speed 和厨房关键词匹配
+
+### 变更 (Changed)
+- **厨师长未完成事项按日折叠** — 16+ 条事项从平铺卡片改为按日期分组的手风琴，每组显示日期 + 数量 + 分类统计，展开后按优先级排序（高→中→低）
+
 ## [2.0.3] - 2026-02-28
 
 ### 变更 (Changed)

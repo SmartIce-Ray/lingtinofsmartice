@@ -57,8 +57,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: '其他',
 };
 
-function isKitchenCategory(category: string): boolean {
-  return category === 'dish_quality';
+function isKitchenRelevant(item: { category: string; suggestion_text: string }): boolean {
+  if (item.category === 'dish_quality') return true;
+  if (item.category === 'service_speed') return true;
+  if (/厨师|厨房|后厨|菜品|出品|出菜|上菜|温度|摆盘|食材|新鲜/.test(item.suggestion_text)) return true;
+  return false;
 }
 
 function formatDuration(seconds: number): string {
@@ -87,6 +90,9 @@ function groupByDate(items: ActionItem[]): Array<{ date: string; label: string; 
     .map(([date, groupItems]) => ({ date, label: formatActionDate(date), items: groupItems }));
 }
 
+// Priority sort order (high → medium → low)
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
 // Priority dot color
 const PRIORITY_DOT: Record<string, string> = {
   high: 'bg-red-500',
@@ -103,6 +109,15 @@ interface PendingItemsSectionProps {
 }
 
 function PendingItemsSection({ items, collapsed, onToggleCollapse, updatingItemId, onUpdateStatus }: PendingItemsSectionProps) {
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const toggleDate = (date: string) => {
+    setExpandedDates(prev => {
+      const next = new Set(prev);
+      next.has(date) ? next.delete(date) : next.add(date);
+      return next;
+    });
+  };
+
   if (items.length === 0) {
     return (
       <section>
@@ -138,72 +153,115 @@ function PendingItemsSection({ items, collapsed, onToggleCollapse, updatingItemI
         </svg>
       </button>
 
-      {/* Items */}
+      {/* Date-grouped accordion */}
       {!collapsed && (
-        <div className="space-y-2.5">
-          {groups.map(group => (
-            group.items.map(item => {
-              const priorityConf = PRIORITY_CONFIG[item.priority];
-              const dotColor = PRIORITY_DOT[item.priority] || 'bg-gray-400';
-              const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
+        <div className="space-y-2">
+          {groups.map(group => {
+            const isDateExpanded = expandedDates.has(group.date);
 
-              return (
-                <div key={item.id} className="bg-white rounded-2xl p-3.5 shadow-sm">
-                  {/* Date label */}
-                  <div className="text-[10px] text-gray-400 font-medium mb-1.5">{group.label}</div>
+            // Category counts for summary line
+            const catCounts = new Map<string, number>();
+            for (const item of group.items) {
+              const label = CATEGORY_LABELS[item.category] || item.category;
+              catCounts.set(label, (catCounts.get(label) || 0) + 1);
+            }
+            const catSummary = Array.from(catCounts.entries())
+              .map(([label, count]) => `${label} ${count}项`)
+              .join(' · ');
 
-                  {/* Priority dot + category */}
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                    <span className={`text-xs font-medium ${priorityConf?.color || 'text-gray-500'}`}>
-                      {priorityConf?.label || item.priority}
-                    </span>
-                    <span className="text-xs text-gray-400">&middot;</span>
-                    <span className="text-xs text-gray-500">{categoryLabel}</span>
-                  </div>
+            // Sort items by priority when expanded
+            const sortedItems = [...group.items].sort(
+              (a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9)
+            );
 
-                  {/* Suggestion text */}
-                  <p className="text-sm text-gray-800 leading-relaxed">{item.suggestion_text}</p>
-
-                  {/* Assignee & due date (if available) */}
-                  {(item.assignee || item.due_date) && (
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
-                      {item.assignee && (
-                        <span className="flex items-center gap-0.5">
-                          <span>&#x1F464;</span> {item.assignee}
-                        </span>
-                      )}
-                      {item.due_date && (
-                        <span className="flex items-center gap-0.5">
-                          <span>&#x23F0;</span> {item.due_date}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-gray-100">
-                    {item.status === 'pending' && (
-                      <button
-                        onClick={() => onUpdateStatus(item.id, 'acknowledged')}
-                        disabled={updatingItemId === item.id}
-                        className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 active:bg-primary-200 transition-colors disabled:opacity-50"
+            return (
+              <div key={group.date} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                {/* Date summary row — tappable */}
+                <div
+                  className="px-3.5 py-3 cursor-pointer active:bg-gray-50 transition-colors"
+                  onClick={() => toggleDate(group.date)}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-800">{group.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-400">{group.items.length}项</span>
+                      <svg
+                        className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isDateExpanded ? 'rotate-180' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                       >
-                        知悉
-                      </button>
-                    )}
-                    <button
-                      onClick={() => onUpdateStatus(item.id, 'resolved')}
-                      disabled={updatingItemId === item.id}
-                      className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-green-50 text-green-600 hover:bg-green-100 active:bg-green-200 transition-colors disabled:opacity-50"
-                    >
-                      已解决
-                    </button>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                   </div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">{catSummary}</div>
                 </div>
-              );
-            })
-          ))}
+
+                {/* Expanded items */}
+                {isDateExpanded && (
+                  <div className="px-3 pb-3 pt-0 space-y-2 border-t border-gray-100">
+                    {sortedItems.map(item => {
+                      const priorityConf = PRIORITY_CONFIG[item.priority];
+                      const dotColor = PRIORITY_DOT[item.priority] || 'bg-gray-400';
+                      const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
+
+                      return (
+                        <div key={item.id} className="bg-gray-50 rounded-xl p-3">
+                          {/* Priority dot + category */}
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                            <span className={`text-xs font-medium ${priorityConf?.color || 'text-gray-500'}`}>
+                              {priorityConf?.label || item.priority}
+                            </span>
+                            <span className="text-xs text-gray-400">&middot;</span>
+                            <span className="text-xs text-gray-500">{categoryLabel}</span>
+                          </div>
+
+                          {/* Suggestion text */}
+                          <p className="text-sm text-gray-800 leading-relaxed">{item.suggestion_text}</p>
+
+                          {/* Assignee & due date (if available) */}
+                          {(item.assignee || item.due_date) && (
+                            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400">
+                              {item.assignee && (
+                                <span className="flex items-center gap-0.5">
+                                  <span>&#x1F464;</span> {item.assignee}
+                                </span>
+                              )}
+                              {item.due_date && (
+                                <span className="flex items-center gap-0.5">
+                                  <span>&#x23F0;</span> {item.due_date}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action buttons */}
+                          <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-gray-200/60">
+                            {item.status === 'pending' && (
+                              <button
+                                onClick={() => onUpdateStatus(item.id, 'acknowledged')}
+                                disabled={updatingItemId === item.id}
+                                className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 active:bg-primary-200 transition-colors disabled:opacity-50"
+                              >
+                                知悉
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onUpdateStatus(item.id, 'resolved')}
+                              disabled={updatingItemId === item.id}
+                              className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-green-50 text-green-600 hover:bg-green-100 active:bg-green-200 transition-colors disabled:opacity-50"
+                            >
+                              已解决
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
@@ -250,7 +308,7 @@ export default function ChefMeetingsPage() {
     pendingParams ? `/api/action-items/pending?${pendingParams}` : null,
   );
   const allPendingItems = pendingData?.actions ?? [];
-  const kitchenPendingItems = allPendingItems.filter(item => isKitchenCategory(item.category));
+  const kitchenPendingItems = allPendingItems.filter(item => isKitchenRelevant(item));
 
   // Update action item status
   const handleUpdateItemStatus = useCallback(async (id: string, status: string) => {
@@ -435,7 +493,7 @@ export default function ChefMeetingsPage() {
                 {agendaItems.map((item, idx) => {
                   const severity = SEVERITY_CONFIG[item.severity] || SEVERITY_CONFIG.low;
                   const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
-                  const isKitchen = isKitchenCategory(item.category);
+                  const isKitchen = isKitchenRelevant({ category: item.category, suggestion_text: `${item.title} ${item.detail}` });
 
                   return (
                     <div
