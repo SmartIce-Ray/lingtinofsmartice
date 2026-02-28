@@ -6,7 +6,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 
 // Build version - updated on each deployment
-export const APP_VERSION = '2.0.2';
+export const APP_VERSION = '2.0.3';
 export const BUILD_DATE = '2026-02-28';
 
 // Force clear all caches, unregister SW, and hard reload
@@ -111,7 +111,7 @@ export function UpdatePrompt() {
     <>
       {/* Update notification banner */}
       {showUpdate && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-blue-600 text-white px-4 py-3 shadow-lg animate-slide-down">
+        <div className="fixed top-0 left-0 right-0 z-50 bg-primary-600 text-white px-4 py-3 shadow-lg animate-slide-down">
           <div className="flex items-center justify-between max-w-lg mx-auto">
             <div className="flex items-center gap-2">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,13 +123,13 @@ export function UpdatePrompt() {
               <button
                 onClick={handleRefresh}
                 disabled={updating}
-                className="px-3 py-1 bg-white text-blue-600 rounded-full text-sm font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
+                className="px-3 py-1 bg-white text-primary-600 rounded-full text-sm font-medium hover:bg-primary-50 transition-colors disabled:opacity-50"
               >
                 {updating ? '更新中...' : '刷新'}
               </button>
               <button
                 onClick={handleDismiss}
-                className="p-1 hover:bg-blue-500 rounded-full transition-colors"
+                className="p-1 hover:bg-primary-500 rounded-full transition-colors"
                 aria-label="关闭"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -38,13 +38,13 @@ export const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  high: { label: '高', color: 'text-red-700', bg: 'bg-red-100' },
-  medium: { label: '中', color: 'text-yellow-700', bg: 'bg-yellow-100' },
-  low: { label: '低', color: 'text-blue-700', bg: 'bg-blue-100' },
+  high: { label: '高', color: 'text-red-600', bg: 'bg-red-50' },
+  medium: { label: '中', color: 'text-yellow-700', bg: 'bg-yellow-50' },
+  low: { label: '低', color: 'text-primary-600', bg: 'bg-primary-50' },
 };
 
 export const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending: { label: '待处理', color: 'text-orange-600' },
-  acknowledged: { label: '已知悉', color: 'text-blue-600' },
+  pending: { label: '待处理', color: 'text-yellow-700' },
+  acknowledged: { label: '已知悉', color: 'text-primary-600' },
   resolved: { label: '已解决', color: 'text-green-600' },
 };

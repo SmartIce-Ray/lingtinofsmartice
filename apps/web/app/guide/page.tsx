@@ -16,6 +16,7 @@ const ROLE_LABELS: Record<string, string> = {
   manager: '店长',
   administrator: '管理层',
   head_chef: '厨师长',
+  chef: '厨师长',
 };
 
 function NoteItemCard({ item }: { item: ReleaseNoteItem }) {
@@ -28,11 +29,11 @@ function NoteItemCard({ item }: { item: ReleaseNoteItem }) {
         </svg>
         <p className="text-xs text-gray-600 leading-relaxed">{item.howToUse}</p>
       </div>
-      <div className="bg-emerald-50 rounded-lg p-2.5 flex items-start gap-2">
-        <svg className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <div className="bg-green-50 rounded-lg p-2.5 flex items-start gap-2">
+        <svg className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
-        <p className="text-xs text-emerald-700 leading-relaxed">{item.value}</p>
+        <p className="text-xs text-green-700 leading-relaxed">{item.value}</p>
       </div>
     </div>
   );
@@ -53,7 +54,7 @@ function VersionCard({ note, isLatest }: { note: ReleaseNote; isLatest: boolean 
             v{note.version}
           </span>
           {isLatest && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 shrink-0">
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 shrink-0">
               最新
             </span>
           )}

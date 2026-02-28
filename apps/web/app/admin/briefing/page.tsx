@@ -327,10 +327,10 @@ export default function AdminBriefingPage() {
 
                       {/* Review record section */}
                       {rest.latest_review ? (
-                        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
+                        <div className="bg-primary-50/50 border border-primary-100 rounded-xl p-3">
                           <div className="flex items-center gap-1.5 mb-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            <span className="text-xs font-medium text-blue-700">最近复盘记录</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                            <span className="text-xs font-medium text-primary-700">最近复盘记录</span>
                           </div>
                           {rest.latest_review.ai_summary && (
                             <p className="text-sm text-gray-700 leading-relaxed">{rest.latest_review.ai_summary}</p>
@@ -341,7 +341,7 @@ export default function AdminBriefingPage() {
                               <ul className="space-y-1">
                                 {rest.latest_review.action_items.map((item: string, i: number) => (
                                   <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                                    <span className="text-blue-400 mt-0.5">·</span>
+                                    <span className="text-primary-400 mt-0.5">·</span>
                                     <span>{item}</span>
                                   </li>
                                 ))}

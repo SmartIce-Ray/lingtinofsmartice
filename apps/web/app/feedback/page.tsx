@@ -288,7 +288,7 @@ export default function FeedbackPage() {
 
             <div className="flex flex-wrap gap-2">
               {result.category && (
-                <span className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">
+                <span className="text-xs px-2 py-1 bg-primary-50 text-primary-700 rounded-full">
                   {CATEGORY_LABELS[result.category] || result.category}
                 </span>
               )}

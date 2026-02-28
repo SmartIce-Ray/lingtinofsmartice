@@ -112,10 +112,10 @@ export function MeetingDetail({ meeting, onClose }: MeetingDetailProps) {
               </h3>
               <div className="space-y-2">
                 {meeting.keyDecisions.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-blue-50 rounded-xl">
-                    <p className="text-sm font-medium text-blue-800">{item.decision}</p>
+                  <div key={idx} className="p-3 bg-primary-50 rounded-xl">
+                    <p className="text-sm font-medium text-primary-800">{item.decision}</p>
                     {item.context && (
-                      <p className="text-xs text-blue-600 mt-1">{item.context}</p>
+                      <p className="text-xs text-primary-600 mt-1">{item.context}</p>
                     )}
                   </div>
                 ))}

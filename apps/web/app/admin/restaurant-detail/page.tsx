@@ -138,8 +138,8 @@ function RestaurantDetailContent() {
                 {/* Header */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                      <span className="text-blue-600 font-medium">{visit.table_id}</span>
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-primary-600 font-medium">{visit.table_id}</span>
                     </div>
                     <div>
                       <div className="font-medium text-gray-900">{visit.table_id}桌</div>

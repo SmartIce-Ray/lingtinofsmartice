@@ -58,7 +58,7 @@ export function ChefBottomNav() {
               key={item.href}
               href={item.href}
               className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
-                isActive ? 'text-orange-600' : 'text-gray-400 hover:text-gray-600'
+                isActive ? 'text-primary-600' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               {item.icon(isActive)}

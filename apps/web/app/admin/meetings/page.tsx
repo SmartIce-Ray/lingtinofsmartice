@@ -47,11 +47,11 @@ interface AdminOverviewResponse {
 }
 
 const MEETING_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  pre_meal: { label: '餐前会', color: 'bg-blue-100 text-blue-700' },
+  pre_meal: { label: '餐前会', color: 'bg-primary-100 text-primary-700' },
   daily_review: { label: '复盘', color: 'bg-amber-100 text-amber-700' },
   weekly: { label: '周例会', color: 'bg-purple-100 text-purple-700' },
   kitchen_meeting: { label: '厨房会议', color: 'bg-orange-100 text-orange-700' },
-  cross_store_review: { label: '经营会', color: 'bg-indigo-100 text-indigo-700' },
+  cross_store_review: { label: '经营会', color: 'bg-primary-100 text-primary-700' },
   one_on_one: { label: '店长沟通', color: 'bg-teal-100 text-teal-700' },
 };
 

@@ -30,7 +30,7 @@ interface MeetingAgendaCardProps {
 const SEVERITY_CONFIG = {
   high: { dot: 'bg-red-500', label: '严重', bg: 'bg-red-50 border-red-200' },
   medium: { dot: 'bg-yellow-500', label: '注意', bg: 'bg-yellow-50 border-yellow-200' },
-  low: { dot: 'bg-blue-500', label: '轻微', bg: 'bg-blue-50 border-blue-200' },
+  low: { dot: 'bg-primary-500', label: '轻微', bg: 'bg-primary-50 border-primary-200' },
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -97,14 +97,14 @@ export function MeetingAgendaCard({ restaurantId }: MeetingAgendaCardProps) {
       {/* Header */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full px-4 py-3 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-white"
+        className="w-full px-4 py-3 flex items-center justify-between bg-gradient-to-r from-primary-50 to-white"
       >
         <div className="flex items-center gap-2">
           <span className="text-base">📋</span>
           <span className="text-sm font-semibold text-gray-800">
             今日议题
           </span>
-          <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">
+          <span className="text-xs bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full font-medium">
             {agendaItems.length}项
           </span>
         </div>

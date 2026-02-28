@@ -98,7 +98,7 @@ export function MotivationBanner({ restaurantId, userName }: MotivationBannerPro
   const displayName = userName || '';
 
   return (
-    <div className="bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 rounded-2xl px-4 py-3 shadow-sm">
+    <div className="bg-gradient-to-br from-primary-50 via-gray-50 to-gray-100 rounded-2xl px-4 py-3 shadow-sm">
       {/* Greeting */}
       <p className="text-sm text-gray-700 leading-relaxed">
         {displayName && (

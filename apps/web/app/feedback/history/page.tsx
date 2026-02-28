@@ -24,7 +24,7 @@ interface FeedbackItem {
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   pending: { label: '待处理', color: 'bg-gray-100 text-gray-600' },
-  read: { label: '已读', color: 'bg-blue-50 text-blue-600' },
+  read: { label: '已读', color: 'bg-primary-50 text-primary-600' },
   in_progress: { label: '处理中', color: 'bg-amber-50 text-amber-600' },
   resolved: { label: '已解决', color: 'bg-green-50 text-green-600' },
   dismissed: { label: '已关闭', color: 'bg-gray-100 text-gray-400' },
@@ -143,11 +143,11 @@ export default function FeedbackHistoryPage() {
 
               {/* Admin reply */}
               {fb.admin_reply && (
-                <div className="mt-2 bg-blue-50 rounded-lg p-3 space-y-1">
-                  <p className="text-xs font-medium text-blue-700">管理层回复</p>
-                  <p className="text-sm text-blue-800">{fb.admin_reply}</p>
+                <div className="mt-2 bg-primary-50 rounded-lg p-3 space-y-1">
+                  <p className="text-xs font-medium text-primary-700">管理层回复</p>
+                  <p className="text-sm text-primary-800">{fb.admin_reply}</p>
                   {fb.admin_reply_at && (
-                    <p className="text-[10px] text-blue-400">{formatTime(fb.admin_reply_at)}</p>
+                    <p className="text-[10px] text-primary-400">{formatTime(fb.admin_reply_at)}</p>
                   )}
                 </div>
               )}

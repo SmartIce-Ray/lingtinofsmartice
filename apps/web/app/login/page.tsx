@@ -28,11 +28,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-red-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
+          <div className="w-20 h-20 bg-primary-700 rounded-2xl mx-auto flex items-center justify-center shadow-lg">
             <span className="text-white text-3xl font-bold">灵</span>
           </div>
           <h1 className="mt-4 text-2xl font-bold text-gray-900">Lingtin 桌访系统</h1>
@@ -56,7 +56,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 outline-none transition"
               placeholder="请输入用户名"
               required
               autoComplete="username"
@@ -72,7 +72,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-400 focus:border-primary-400 outline-none transition"
               placeholder="请输入密码"
               required
               autoComplete="current-password"
@@ -82,7 +82,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-red-600 text-white py-3 rounded-xl font-medium hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-primary-600 text-white py-3 rounded-xl font-medium hover:bg-primary-700 focus:ring-2 focus:ring-primary-400 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? '登录中...' : '登录'}
           </button>

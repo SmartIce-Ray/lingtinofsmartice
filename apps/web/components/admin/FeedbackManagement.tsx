@@ -37,7 +37,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600',
-  read: 'bg-blue-50 text-blue-600',
+  read: 'bg-primary-50 text-primary-600',
   in_progress: 'bg-amber-50 text-amber-600',
   resolved: 'bg-green-50 text-green-600',
   dismissed: 'bg-gray-100 text-gray-400',
@@ -234,7 +234,7 @@ export function FeedbackManagement() {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-gray-900">{employeeName}</span>
                           {fb.category && (
-                            <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                            <span className="text-xs px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded">
                               {CATEGORY_LABELS[fb.category] || fb.category}
                             </span>
                           )}
@@ -290,9 +290,9 @@ export function FeedbackManagement() {
 
                       {/* Existing reply */}
                       {fb.admin_reply && (
-                        <div className="bg-blue-50 rounded-lg p-2.5 space-y-1">
-                          <p className="text-xs font-medium text-blue-700">已回复</p>
-                          <p className="text-sm text-blue-800">{fb.admin_reply}</p>
+                        <div className="bg-primary-50 rounded-lg p-2.5 space-y-1">
+                          <p className="text-xs font-medium text-primary-700">已回复</p>
+                          <p className="text-sm text-primary-800">{fb.admin_reply}</p>
                         </div>
                       )}
 

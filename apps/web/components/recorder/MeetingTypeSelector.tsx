@@ -32,14 +32,14 @@ const MEETING_TYPES: Array<{
     label: '每日复盘',
     icon: '📋',
     hint: '回顾今日表现',
-    colors: { bg: 'bg-indigo-50', bgActive: 'bg-indigo-100', border: 'border-indigo-400', text: 'text-indigo-700' },
+    colors: { bg: 'bg-primary-50', bgActive: 'bg-primary-100', border: 'border-primary-400', text: 'text-primary-700' },
   },
   {
     type: 'weekly',
     label: '周例会',
     icon: '📅',
     hint: '本周综合分析',
-    colors: { bg: 'bg-emerald-50', bgActive: 'bg-emerald-100', border: 'border-emerald-400', text: 'text-emerald-700' },
+    colors: { bg: 'bg-green-50', bgActive: 'bg-green-100', border: 'border-green-400', text: 'text-green-700' },
   },
 ];
 

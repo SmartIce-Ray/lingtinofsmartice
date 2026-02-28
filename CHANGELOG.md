@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-02-28
+
+### 变更 (Changed)
+- **H-3 宣纸素墨配色** — 全角色页面统一应用低饱和中国传统色调
+  - 覆盖 7 个 Tailwind 语义色阶（red/green/yellow/amber/orange/purple/teal）为赤陶红/松绿/土黄/暖橙/藤紫/苍青
+  - 修复 action-item-constants 中不存在的 `text-danger`/`text-warning`/`text-success` 类名
+  - 厨师长底部导航激活色统一为靛蓝 primary-600
+  - gray→暖灰、blue→靛蓝 primary、emerald→松绿 green、品牌红→primary
+
 ## [2.0.2] - 2026-02-28
 
 ### 新增 (Added)

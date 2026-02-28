@@ -307,7 +307,7 @@ function ActionCard({
   return (
     <div className={`bg-white rounded-2xl p-4 shadow-sm ${
       item.status === 'resolved' ? 'border border-green-200 bg-green-50/50' :
-      item.status === 'acknowledged' ? 'border border-blue-200 bg-blue-50/30' :
+      item.status === 'acknowledged' ? 'border border-primary-200 bg-primary-50/30' :
       highlight ? 'border border-red-200 bg-red-50/30' :
       ''
     }`}>

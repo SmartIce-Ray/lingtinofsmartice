@@ -46,7 +46,7 @@ interface DailySummaryResponse {
 const SEVERITY_CONFIG = {
   high: { dot: 'bg-red-500', label: '严重' },
   medium: { dot: 'bg-yellow-500', label: '注意' },
-  low: { dot: 'bg-blue-500', label: '轻微' },
+  low: { dot: 'bg-primary-500', label: '轻微' },
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -91,7 +91,7 @@ function groupByDate(items: ActionItem[]): Array<{ date: string; label: string; 
 const PRIORITY_DOT: Record<string, string> = {
   high: 'bg-red-500',
   medium: 'bg-amber-400',
-  low: 'bg-blue-400',
+  low: 'bg-primary-400',
 };
 
 interface PendingItemsSectionProps {
@@ -106,9 +106,9 @@ function PendingItemsSection({ items, collapsed, onToggleCollapse, updatingItemI
   if (items.length === 0) {
     return (
       <section>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-2.5">
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-2.5">
           <span className="text-lg">&#x2705;</span>
-          <span className="text-sm font-medium text-emerald-700">所有事项已处理完毕</span>
+          <span className="text-sm font-medium text-green-700">所有事项已处理完毕</span>
         </div>
       </section>
     );
@@ -187,7 +187,7 @@ function PendingItemsSection({ items, collapsed, onToggleCollapse, updatingItemI
                       <button
                         onClick={() => onUpdateStatus(item.id, 'acknowledged')}
                         disabled={updatingItemId === item.id}
-                        className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 active:bg-blue-200 transition-colors disabled:opacity-50"
+                        className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 active:bg-primary-200 transition-colors disabled:opacity-50"
                       >
                         知悉
                       </button>

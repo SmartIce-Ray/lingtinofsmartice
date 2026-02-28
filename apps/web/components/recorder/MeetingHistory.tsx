@@ -41,7 +41,7 @@ function formatDuration(seconds: number): string {
 function StatusBadge({ status }: { status: MeetingStatus }) {
   const config: Record<MeetingStatus, { text: string; className: string }> = {
     saved: { text: '已保存', className: 'bg-gray-100 text-gray-600' },
-    uploading: { text: '上传中...', className: 'bg-blue-100 text-blue-600' },
+    uploading: { text: '上传中...', className: 'bg-primary-100 text-primary-600' },
     pending: { text: '待处理', className: 'bg-gray-100 text-gray-600' },
     processing: { text: '分析中...', className: 'bg-yellow-100 text-yellow-600' },
     processed: { text: '已完成', className: 'bg-green-100 text-green-600' },

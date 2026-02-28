@@ -87,7 +87,7 @@ export function ActionItemsCard({ restaurantId, date }: ActionItemsCardProps) {
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors disabled:opacity-50"
         >
           {generating ? (
             <>
@@ -140,7 +140,7 @@ export function ActionItemsCard({ restaurantId, date }: ActionItemsCardProps) {
                 item.status === 'resolved'
                   ? 'border-green-200 bg-green-50/50'
                   : item.status === 'acknowledged'
-                    ? 'border-blue-200 bg-blue-50/30'
+                    ? 'border-primary-200 bg-primary-50/30'
                     : 'border-gray-200'
               }`}
             >
@@ -195,7 +195,7 @@ export function ActionItemsCard({ restaurantId, date }: ActionItemsCardProps) {
                   <button
                     onClick={() => handleUpdateStatus(item.id, 'acknowledged')}
                     disabled={updatingId === item.id}
-                    className="px-3 py-1 text-xs rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                    className="px-3 py-1 text-xs rounded-full bg-primary-50 text-primary-600 hover:bg-primary-100 transition-colors disabled:opacity-50"
                   >
                     知悉
                   </button>

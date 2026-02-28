@@ -248,12 +248,21 @@ export const RELEASE_NOTES: ReleaseNote[] = [
   },
 ];
 
+// chef is an alias for head_chef in the role system
+const ROLE_ALIASES: Record<string, RoleCode> = { chef: 'head_chef' };
+
+function normalizeRole(role: string): RoleCode {
+  return ROLE_ALIASES[role] ?? role as RoleCode;
+}
+
 /** Get all notes visible to a specific role, newest first */
 export function getNotesForRole(role: string): ReleaseNote[] {
-  return RELEASE_NOTES.filter(n => n.roles.includes(role as RoleCode));
+  const r = normalizeRole(role);
+  return RELEASE_NOTES.filter(n => n.roles.includes(r));
 }
 
 /** Get the note for a specific version and role (for modal display) */
 export function getLatestNoteForRole(version: string, role: string): ReleaseNote | undefined {
-  return RELEASE_NOTES.find(n => n.version === version && n.roles.includes(role as RoleCode));
+  const r = normalizeRole(role);
+  return RELEASE_NOTES.find(n => n.version === version && n.roles.includes(r));
 }

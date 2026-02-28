@@ -329,7 +329,7 @@ export default function ChefDishesPage() {
                                     <button
                                       onClick={(e) => { e.stopPropagation(); handleAudioToggle(ctx.visitId, ctx.audioUrl!); }}
                                       className={`ml-auto flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                                        playingVisitId === ctx.visitId ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600'
+                                        playingVisitId === ctx.visitId ? 'bg-primary-100 text-primary-700' : 'bg-primary-50 text-primary-600'
                                       }`}
                                     >
                                       {playingVisitId === ctx.visitId ? '⏸ 暂停' : '▶ 原声'}
@@ -531,7 +531,7 @@ export default function ChefDishesPage() {
                       className="flex items-center justify-between px-4 py-3"
                     >
                       <span className="text-sm text-gray-700">{dish.dish_name}</span>
-                      <span className="text-xs text-emerald-600 font-medium">
+                      <span className="text-xs text-green-600 font-medium">
                         {dish.positive}桌好评
                       </span>
                     </div>
