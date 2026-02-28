@@ -575,14 +575,13 @@ this.logger.log(`Messages in context: ${messages.length}`);
 
     this.logger.log(`Calling OpenRouter with ${messages.length} messages`);
 
-    // Timeout: 60s for regular, 90s for briefing (pre-fetch queries + AI generation)
+    // Timeout covers the entire request lifecycle: fetch + JSON parsing
     const timeoutMs = isBriefing ? 90_000 : 60_000;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    let response: globalThis.Response;
     try {
-      response = await fetch(OPENROUTER_API_URL, {
+      const response = await fetch(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -591,22 +590,24 @@ this.logger.log(`Messages in context: ${messages.length}`);
         body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`API error: ${response.status} - ${errorText}`);
+        throw new Error(`API error: ${response.status} - ${errorText}`);
+      }
+
+      // JSON parsing also covered by the abort signal timeout
+      const json = await response.json();
+      return json;
     } catch (err) {
-      clearTimeout(timeout);
       if (err instanceof Error && err.name === 'AbortError') {
         throw new Error('AI 响应超时，请稍后重试');
       }
       throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error(`API error: ${response.status} - ${errorText}`);
-      throw new Error(`API error: ${response.status} - ${errorText}`);
-    }
-
-    return response.json();
   }
 
   /**
@@ -649,17 +650,25 @@ this.logger.log(`Executing tool: ${name}`);
     // Must trim: template literal SQL has leading \n that PostgreSQL TRIM() doesn't remove,
     // causing the RPC's "LIKE 'select%'" check to fail
     const trimmedSql = sql.replace(/\s+/g, ' ').trim();
+    const QUERY_TIMEOUT = 15_000; // 15s per query, fail fast
+
     try {
-      const { data, error } = await client.rpc('execute_readonly_query', {
+      const queryPromise = client.rpc('execute_readonly_query', {
         query_text: trimmedSql,
       });
+      let timer: NodeJS.Timeout;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Query timeout (15s)')), QUERY_TIMEOUT);
+      });
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]).finally(() => clearTimeout(timer!));
       if (error) {
-        this.logger.warn(`[runRawQuery] RPC failed: ${error.message}`);
+        this.logger.error(`[runRawQuery] RPC failed: ${error.message} | SQL: ${trimmedSql.slice(0, 80)}`);
         return [];
       }
       return data || [];
     } catch (err) {
-      this.logger.warn(`[runRawQuery] Error: ${err.message}`);
+      this.logger.error(`[runRawQuery] Error: ${err.message} | SQL: ${trimmedSql.slice(0, 80)}`);
       return [];
     }
   }
@@ -669,6 +678,27 @@ this.logger.log(`Executing tool: ${name}`);
    * Returns a formatted data message to inject into the AI prompt.
    */
   private async prefetchBriefingData(
+    roleCode: string,
+    restaurantId: string,
+    managedRestaurantIds: string[] | null,
+  ): Promise<string> {
+    const PREFETCH_TIMEOUT = 30_000; // 30s total for all queries
+
+    try {
+      const dataPromise = this.doPrefetchBriefingData(roleCode, restaurantId, managedRestaurantIds);
+      let timer: NodeJS.Timeout;
+      const timeoutPromise = new Promise<string>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('数据查询超时')), PREFETCH_TIMEOUT);
+      });
+      return await Promise.race([dataPromise, timeoutPromise]).finally(() => clearTimeout(timer!));
+    } catch (err) {
+      this.logger.error(`[prefetchBriefingData] Failed: ${err.message}`);
+      // Return minimal fallback so AI can still generate a useful response
+      return '[每日汇报数据]\n数据查询失败，请根据你对门店的了解生成一份简短的问候汇报，告知用户数据暂时不可用，建议稍后重试。\n';
+    }
+  }
+
+  private async doPrefetchBriefingData(
     roleCode: string,
     restaurantId: string,
     managedRestaurantIds: string[] | null,
