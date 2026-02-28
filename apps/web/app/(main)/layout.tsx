@@ -1,9 +1,10 @@
 // Main App Layout - Layout with bottom navigation
-// v1.1 - Added 'use client' to fix Server/Client component boundary issue
+// v1.2 - Added WhatsNewModal for version update notifications
 
 'use client';
 
 import { BottomNav } from '@/components/layout/BottomNav';
+import { WhatsNewModal } from '@/components/layout/WhatsNewModal';
 
 export default function MainAppLayout({
   children,
@@ -14,6 +15,7 @@ export default function MainAppLayout({
     <div className="min-h-screen pb-16">
       {children}
       <BottomNav />
+      <WhatsNewModal />
     </div>
   );
 }

@@ -1,9 +1,10 @@
 // Admin Layout - Layout with bottom navigation for boss/administrator role
-// v1.1 - Added 'use client' to fix Server/Client component boundary issue
+// v1.2 - Added WhatsNewModal for version update notifications
 
 'use client';
 
 import { AdminBottomNav } from '@/components/layout/AdminBottomNav';
+import { WhatsNewModal } from '@/components/layout/WhatsNewModal';
 
 export default function AdminLayout({
   children,
@@ -14,6 +15,7 @@ export default function AdminLayout({
     <div className="min-h-screen pb-16">
       {children}
       <AdminBottomNav />
+      <WhatsNewModal />
     </div>
   );
 }

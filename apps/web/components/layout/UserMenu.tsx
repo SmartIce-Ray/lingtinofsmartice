@@ -1,21 +1,39 @@
 // User Menu Component - Display user avatar with dropdown menu
-// v1.2 - Added 提交反馈 + 我的反馈 entries for all roles
+// v1.3 - Added 使用指南 entry with red dot for unread updates
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { APP_VERSION } from './UpdatePrompt';
+
+const GUIDE_SEEN_KEY = 'lingtin_guide_seen_version';
 
 export function UserMenu() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Get first character of employee name (e.g., "梁店长" -> "梁")
   const avatarChar = user?.employeeName?.charAt(0) || '?';
   const isAdmin = user?.roleCode === 'administrator';
+
+  // Check for unread guide updates
+  useEffect(() => {
+    try {
+      const seen = localStorage.getItem(GUIDE_SEEN_KEY);
+      setHasUnread(seen !== APP_VERSION);
+    } catch {
+      setHasUnread(false);
+    }
+
+    const handleGuideSeen = () => setHasUnread(false);
+    window.addEventListener('lingtin-guide-seen', handleGuideSeen);
+    return () => window.removeEventListener('lingtin-guide-seen', handleGuideSeen);
+  }, []);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -40,10 +58,13 @@ export function UserMenu() {
         <span className="text-xs text-gray-500 hidden sm:inline">
           {user.restaurantName}
         </span>
-        <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+        <div className="relative w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
           <span className="text-primary-600 text-sm font-medium">
             {avatarChar}
           </span>
+          {hasUnread && (
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+          )}
         </div>
       </button>
 
@@ -110,6 +131,21 @@ export function UserMenu() {
           >
             <span className="text-gray-400">📝</span>
             我的反馈
+          </button>
+
+          {/* Guide */}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              router.push('/guide');
+            }}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+          >
+            <span className="text-gray-400">📖</span>
+            <span className="flex-1">使用指南</span>
+            {hasUnread && (
+              <span className="w-2 h-2 bg-red-500 rounded-full" />
+            )}
           </button>
 
           {/* Logout Button */}

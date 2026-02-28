@@ -221,8 +221,9 @@ master_employee (1)   ──< visit_records (N)
 | v1.5.0 员工产品反馈 | feat/product-feedback | ✅ 已合并 | PR #12 已 merge。文字/语音+图片附件提交反馈，AI分类，管理层查看/回复 |
 | v1.4.0 管理层会议功能 | feat/meeting-recording | ✅ 已合并 | PR #7 → #10 已 merge |
 | 顾客洞察按门店分组展示 | feat/meeting-recording | ✅ 已合并 | PR #11 已 merge |
+| v2.0.1 总览崩溃+洞察重设计 | fix/briefing-crash-insights-redesign | ✅ 已合并 | PR #36。总览页 Array.isArray 守卫 + 顾客洞察按门店折叠 + suggestions API start_date/end_date |
 | v2.0.0 管理闭环升级 | feat/review-completion-briefing-v2 | ✅ 已合并 | PR #34。复盘完成率+简报重设计+厨房响应+厨师长语音输入。迁移已执行 |
 | fix: reanalyze only_missing_feedbacks | fix/reanalyze-missing-feedbacks | ✅ 已合并 | PR #35。reanalyze-batch 新增 only_missing_feedbacks 参数防止覆盖已有数据 |
-| 后台任务：重跑缺 feedbacks 的记录 | — | 🔄 进行中 | 约 1285 条 processed 记录有 transcript 但无 feedbacks（Prompt V1 遗留）。用 `only_missing_feedbacks: true` + cutoff `2026-03-01` 分批重跑。上次跑了约 279 条后被中断。当前批次在后台运行中。**检查方法**：`SELECT COUNT(*) FROM lingtin_visit_records WHERE status='processed' AND (feedbacks IS NULL OR feedbacks::text='[]' OR feedbacks::text='null') AND raw_transcript IS NOT NULL AND LENGTH(raw_transcript) > 10` |
+| 后台任务：重跑缺 feedbacks 的记录 | — | ⏸️ 暂停 | 约 1285 条 processed 记录有 transcript 但无 feedbacks（Prompt V1 遗留）。用 `only_missing_feedbacks: true` + cutoff `2026-03-01` 分批重跑。上次跑了约 279 条后被中断。用户要求暂停，后续继续。**检查方法**：`SELECT COUNT(*) FROM lingtin_visit_records WHERE status='processed' AND (feedbacks IS NULL OR feedbacks::text='[]' OR feedbacks::text='null') AND raw_transcript IS NOT NULL AND LENGTH(raw_transcript) > 10` |
 | 本地 .env service key 无效 | — | 待修复 | `apps/api/.env` 中 `SUPABASE_SERVICE_KEY` 无效。线上 Zeabur 有正确 key 所以生产正常 |
 | 本地测试局限 | — | 已知问题 | `pnpm dev` 前端连线上 API，本地后端因 service key 无效运行在 MOCK MODE |

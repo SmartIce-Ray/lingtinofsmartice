@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { ChefBottomNav } from '@/components/layout/ChefBottomNav';
+import { WhatsNewModal } from '@/components/layout/WhatsNewModal';
 
 export default function ChefLayout({
   children,
@@ -42,6 +43,7 @@ export default function ChefLayout({
     <div className="min-h-screen pb-16">
       {children}
       <ChefBottomNav />
+      <WhatsNewModal />
     </div>
   );
 }
