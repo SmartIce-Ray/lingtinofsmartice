@@ -207,7 +207,7 @@ export class FeedbackService {
 
     let query = client
       .from('lingtin_product_feedback')
-      .select('*, master_employee!lingtin_product_feedback_employee_id_fkey(employee_name, restaurant_id)')
+      .select('*, master_employee!lingtin_product_feedback_employee_id_fkey(employee_name, restaurant_id), master_restaurant!lingtin_product_feedback_restaurant_id_fkey(restaurant_name)')
       .order('created_at', { ascending: false })
       .limit(100);
 

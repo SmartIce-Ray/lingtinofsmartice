@@ -153,38 +153,54 @@ function MeetingSummaryRow({
 // --- Store Meeting Card ---
 function StoreMeetingCard({
   store,
+  expanded,
+  onToggle,
   onMeetingTap,
 }: {
   store: StoreOverview;
+  expanded: boolean;
+  onToggle: () => void;
   onMeetingTap: (m: ApiMeeting) => void;
 }) {
   const hasMeetings = store.meetings.length > 0;
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50">
-        <div className="flex items-center justify-between">
+      <div
+        className={`px-4 py-3 flex items-center justify-between ${hasMeetings ? 'cursor-pointer active:bg-gray-50' : ''}`}
+        onClick={hasMeetings ? onToggle : undefined}
+      >
+        <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-900">{store.name}</span>
-          {hasMeetings ? (
-            <span className="text-xs text-gray-400">{store.meetings.length} 次会议</span>
-          ) : (
+          {hasMeetings && (
+            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-primary-50 text-primary-600">
+              {store.meetings.length}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {!hasMeetings && (
             <span className="text-xs text-gray-300">
               {store.last_meeting_date
                 ? `上次 ${formatDateLabel(store.last_meeting_date)}`
                 : '暂无会议'}
             </span>
           )}
+          {hasMeetings && (
+            <svg
+              className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          )}
         </div>
       </div>
-      {hasMeetings ? (
-        <div className="px-4 divide-y divide-gray-50">
+      {hasMeetings && expanded && (
+        <div className="px-4 divide-y divide-gray-50 border-t border-gray-50">
           {store.meetings.map((m) => (
             <MeetingSummaryRow key={m.id} meeting={m} onTap={() => onMeetingTap(m)} />
           ))}
-        </div>
-      ) : (
-        <div className="px-4 py-4 text-center">
-          <p className="text-xs text-gray-300">当日未开会</p>
         </div>
       )}
     </div>
@@ -197,6 +213,7 @@ export default function AdminMeetingsPage() {
   const [dateRange, setDateRange] = useState<DateRange>(() => singleDay(getChinaYesterday()));
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingRecord | null>(null);
   const [showMyMeetings, setShowMyMeetings] = useState(true);
+  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
 
   const { data: apiData, isLoading, error } = useSWR<AdminOverviewResponse>(
     `/api/meeting/admin-overview?${dateRangeParams(dateRange)}${user?.id ? `&employee_id=${user.id}` : ''}${managedIdsParam}`
@@ -301,6 +318,8 @@ export default function AdminMeetingsPage() {
           <StoreMeetingCard
             key={store.id}
             store={store}
+            expanded={expandedStoreId === store.id}
+            onToggle={() => setExpandedStoreId(prev => prev === store.id ? null : store.id)}
             onMeetingTap={(m) => setSelectedMeeting(apiToMeetingRecord(m))}
           />
         ))}

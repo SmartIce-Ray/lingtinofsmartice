@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import useSWR, { mutate } from 'swr';
 import { useAuth, getAuthHeaders } from '@/contexts/AuthContext';
 import { getApiUrl } from '@/lib/api';
@@ -24,6 +24,7 @@ interface FeedbackItem {
   admin_reply_at: string | null;
   created_at: string;
   master_employee?: { employee_name: string; restaurant_id: string } | null;
+  master_restaurant?: { restaurant_name: string } | null;
 }
 
 const STATUS_OPTIONS = [
@@ -75,6 +76,7 @@ export function FeedbackManagement() {
   const [submittingReply, setSubmittingReply] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
 
   const params = new URLSearchParams();
   if (statusFilter) params.set('status', statusFilter);
@@ -84,6 +86,23 @@ export function FeedbackManagement() {
   const swrKey = `/api/feedback/all${queryStr}`;
   const { data, isLoading } = useSWR<{ data: FeedbackItem[] }>(swrKey);
   const feedbacks = data?.data ?? [];
+
+  // Group feedbacks by store, sorted by pending count desc
+  const storeGroups = useMemo(() => {
+    const map = new Map<string, { name: string; feedbacks: FeedbackItem[]; pendingCount: number }>();
+    for (const fb of feedbacks) {
+      const rid = fb.restaurant_id;
+      if (!map.has(rid)) {
+        const name = fb.master_restaurant?.restaurant_name || '未知门店';
+        map.set(rid, { name, feedbacks: [], pendingCount: 0 });
+      }
+      const group = map.get(rid)!;
+      group.feedbacks.push(fb);
+      if (fb.status === 'pending') group.pendingCount++;
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1].pendingCount - a[1].pendingCount);
+  }, [feedbacks]);
 
   const handleStatusChange = async (feedbackId: string, newStatus: string) => {
     if (!user) return;
@@ -173,130 +192,164 @@ export function FeedbackManagement() {
         <div className="text-center py-12 text-gray-400 text-sm">暂无反馈</div>
       )}
 
-      {/* Feedback cards */}
-      {feedbacks.map((fb) => {
-        const statusInfo = STATUS_COLORS[fb.status] || STATUS_COLORS.pending;
-        const employeeName = fb.master_employee?.employee_name || '未知';
-        const isReplying = replyingId === fb.id;
-
+      {/* Store-grouped feedback cards */}
+      {storeGroups.map(([storeId, group]) => {
+        const isOpen = expandedStoreId === storeId;
         return (
-          <div key={fb.id} className="bg-white rounded-xl p-4 shadow-sm space-y-2.5">
-            {/* Top row: employee + time + status */}
-            <div className="flex items-center justify-between">
+          <div key={storeId} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            {/* Store header - clickable */}
+            <div
+              className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-50"
+              onClick={() => setExpandedStoreId(prev => prev === storeId ? null : storeId)}
+            >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">{employeeName}</span>
-                {fb.category && (
-                  <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
-                    {CATEGORY_LABELS[fb.category] || fb.category}
+                <span className="text-sm font-semibold text-gray-900">{group.name}</span>
+                {group.pendingCount > 0 && (
+                  <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                    {group.pendingCount} 待处理
                   </span>
                 )}
-                {fb.priority && (
-                  <span className={`text-xs ${PRIORITY_COLORS[fb.priority] || ''}`}>
-                    {fb.priority === 'high' ? '紧急' : fb.priority === 'low' ? '低' : ''}
-                  </span>
-                )}
+                <span className="text-xs text-gray-400">{group.feedbacks.length} 条</span>
               </div>
-              <span className="text-xs text-gray-400">{formatTime(fb.created_at)}</span>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
             </div>
 
-            {/* AI summary */}
-            {fb.ai_summary && (
-              <p className="text-xs text-gray-500 italic">{fb.ai_summary}</p>
-            )}
+            {/* Expanded feedback list */}
+            {isOpen && (
+              <div className="px-4 pb-3 space-y-3 border-t border-gray-50 pt-3">
+                {group.feedbacks.map((fb) => {
+                  const statusInfo = STATUS_COLORS[fb.status] || STATUS_COLORS.pending;
+                  const employeeName = fb.master_employee?.employee_name || '未知';
+                  const isReplying = replyingId === fb.id;
 
-            {/* Content */}
-            <p className="text-sm text-gray-800">
-              {fb.content_text || '(语音反馈处理中...)'}
-            </p>
+                  return (
+                    <div key={fb.id} className="bg-gray-50 rounded-xl p-3.5 space-y-2.5">
+                      {/* Top row: employee + time + status */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900">{employeeName}</span>
+                          {fb.category && (
+                            <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                              {CATEGORY_LABELS[fb.category] || fb.category}
+                            </span>
+                          )}
+                          {fb.priority && (
+                            <span className={`text-xs ${PRIORITY_COLORS[fb.priority] || ''}`}>
+                              {fb.priority === 'high' ? '紧急' : fb.priority === 'low' ? '低' : ''}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400">{formatTime(fb.created_at)}</span>
+                      </div>
 
-            {/* Tags */}
-            {fb.tags && fb.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {fb.tags.map((tag, i) => (
-                  <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
+                      {/* AI summary */}
+                      {fb.ai_summary && (
+                        <p className="text-xs text-gray-500 italic">{fb.ai_summary}</p>
+                      )}
 
-            {/* Voice playback */}
-            {fb.input_type === 'voice' && fb.audio_url && (
-              <button
-                onClick={() => toggleAudio(fb.id, fb.audio_url!)}
-                className="flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-700"
-              >
-                {playingAudioId === fb.id ? (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-                    停止播放
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                    播放原声
-                  </>
-                )}
-              </button>
-            )}
+                      {/* Content */}
+                      <p className="text-sm text-gray-800">
+                        {fb.content_text || '(语音反馈处理中...)'}
+                      </p>
 
-            {/* Existing reply */}
-            {fb.admin_reply && (
-              <div className="bg-blue-50 rounded-lg p-2.5 space-y-1">
-                <p className="text-xs font-medium text-blue-700">已回复</p>
-                <p className="text-sm text-blue-800">{fb.admin_reply}</p>
-              </div>
-            )}
+                      {/* Tags */}
+                      {fb.tags && fb.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {fb.tags.map((tag, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
-            {/* Actions row */}
-            <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
-              {/* Status dropdown */}
-              <select
-                value={fb.status}
-                onChange={(e) => handleStatusChange(fb.id, e.target.value)}
-                className={`text-xs px-2 py-1 rounded-full border-0 ${statusInfo}`}
-              >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
+                      {/* Voice playback */}
+                      {fb.input_type === 'voice' && fb.audio_url && (
+                        <button
+                          onClick={() => toggleAudio(fb.id, fb.audio_url!)}
+                          className="flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-700"
+                        >
+                          {playingAudioId === fb.id ? (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+                              停止播放
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                              播放原声
+                            </>
+                          )}
+                        </button>
+                      )}
 
-              {/* Reply button */}
-              {!isReplying && (
-                <button
-                  onClick={() => { setReplyingId(fb.id); setReplyText(fb.admin_reply || ''); }}
-                  className="text-xs text-primary-600 hover:text-primary-700 ml-auto"
-                >
-                  {fb.admin_reply ? '修改回复' : '回复'}
-                </button>
-              )}
-            </div>
+                      {/* Existing reply */}
+                      {fb.admin_reply && (
+                        <div className="bg-blue-50 rounded-lg p-2.5 space-y-1">
+                          <p className="text-xs font-medium text-blue-700">已回复</p>
+                          <p className="text-sm text-blue-800">{fb.admin_reply}</p>
+                        </div>
+                      )}
 
-            {/* Reply input */}
-            {isReplying && (
-              <div className="space-y-2">
-                <textarea
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="输入回复内容..."
-                  className="w-full h-20 bg-gray-50 rounded-lg p-3 text-sm text-gray-800 placeholder:text-gray-400 border border-gray-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none resize-none"
-                  autoFocus
-                />
-                <div className="flex gap-2 justify-end">
-                  <button
-                    onClick={() => { setReplyingId(null); setReplyText(''); }}
-                    className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={() => handleReply(fb.id)}
-                    disabled={!replyText.trim() || submittingReply}
-                    className="text-xs bg-primary-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50 hover:bg-primary-700"
-                  >
-                    {submittingReply ? '发送中...' : '发送回复'}
-                  </button>
-                </div>
+                      {/* Actions row */}
+                      <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+                        {/* Status dropdown */}
+                        <select
+                          value={fb.status}
+                          onChange={(e) => handleStatusChange(fb.id, e.target.value)}
+                          className={`text-xs px-2 py-1 rounded-full border-0 ${statusInfo}`}
+                        >
+                          {STATUS_OPTIONS.map((s) => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+
+                        {/* Reply button */}
+                        {!isReplying && (
+                          <button
+                            onClick={() => { setReplyingId(fb.id); setReplyText(fb.admin_reply || ''); }}
+                            className="text-xs text-primary-600 hover:text-primary-700 ml-auto"
+                          >
+                            {fb.admin_reply ? '修改回复' : '回复'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Reply input */}
+                      {isReplying && (
+                        <div className="space-y-2">
+                          <textarea
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="输入回复内容..."
+                            className="w-full h-20 bg-white rounded-lg p-3 text-sm text-gray-800 placeholder:text-gray-400 border border-gray-200 focus:border-primary-400 focus:ring-1 focus:ring-primary-400 outline-none resize-none"
+                            autoFocus
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => { setReplyingId(null); setReplyText(''); }}
+                              className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5"
+                            >
+                              取消
+                            </button>
+                            <button
+                              onClick={() => handleReply(fb.id)}
+                              disabled={!replyText.trim() || submittingReply}
+                              className="text-xs bg-primary-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50 hover:bg-primary-700"
+                            >
+                              {submittingReply ? '发送中...' : '发送回复'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
